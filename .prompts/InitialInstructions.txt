@@ -1,0 +1,11 @@
+We are going to work together to write a software design in markdown. The software application that we are designing will be called HotShallot.
+I'm a software architect and principal .NET developer, and you're a highly competent software architect and software developer as well.
+
+Here is what the design needs to describe. (NOTE: this design will subsequently be used to guide an AI coding agent to build this system, so specific details are welcome.)
+
+Overall Application Goal:
+1) Our application will be a system for tracking in-progress tasks by an AI coding agent. 
+2) It will surve to main purposes: give visibility to humans controlling coding agents what those agents are doing, and also allow multiple agents to coordinate together.
+3) It will have both a REST API, a web front end, and a CLI tool. 
+4) The API will provide the ability to send task information, query task information
+.NET 10 cloud application deployed to Azure App Service.
