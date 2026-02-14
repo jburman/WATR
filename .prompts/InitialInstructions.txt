@@ -6,6 +6,30 @@ Here is what the design needs to describe. (NOTE: this design will subsequently 
 Overall Application Goal:
 1) Our application will be a system for tracking in-progress tasks by an AI coding agent. 
 2) It will surve to main purposes: give visibility to humans controlling coding agents what those agents are doing, and also allow multiple agents to coordinate together.
-3) It will have both a REST API, a web front end, and a CLI tool. 
-4) The API will provide the ability to send task information, query task information
-.NET 10 cloud application deployed to Azure App Service.
+3) It will have both a REST API, a web front end, and a CLI tool. The API and web front will be hosted in the cloud as a single web application.
+4) The API will provide the ability to send task information and query task information.
+5) The web front end will provide a grid view of the current active set of tasks and have filters to see completed tasks as well.
+6) The CLI will contain a client for connecting to the REST API to perform task manipulation functions. It will be usable as a tool by coding agents.
+
+Server-Side Data Model:
+1) Users can signup to the site with email address and create a passkey (the site will be fully passwordless). User record will have an email address, display name, date created. Users can also have one or more passkeys.
+2) The application will allow Projects to be created.
+3) Users can be assigned to a Project by email address.
+4) Tasks are assigned to Projects. Tasks consist of a title and a body, which is markdown text describing the task details. They can also have an optional assigned by field in case an agent wants to claim exclusive access to the task. Finally, it can contain an agent notes field where an agent can record comments about the implementation of the task if it needs to (this should be markdown too).
+5) Tasks should have unique IDs that can be refererenced on the client side when retrieving and updating tasks. Let's use UUID v7 so the ID is also sortable.
+
+Implementation notes:
+1) The API and web front will both be hosted by the same ASP.NET Core 10 application. This should make authentication easier (see below), and we will use a local SQLite database to keep initial cost low. But the sqlite database can be shared between the api and the web front end. Make sure to use appropriate pragma and WAL so the SQLite db can be read concurrently.
+2) The web application and API should not allow any anonymous access. Login will be done via PassKey which will be stored into the database (e.g. User -> UserPassKey tables)
+3) The API will be secured by a JWT token. When the CLI needs a new token from the web site it will construct a unique request URL to the API that contains an encoded 8 digit random number. It will show the 8 digit number to the user in the command window and then launch a web browser to a page in the application where the user can login and then enter the 8 digit number. Meanwhile, the CLI will then send an API request to an endpoint that will stay connected for up to 5 minutes and wait for the user to enter the 8 digit number. When the user enters the number, the web application marks the API request as approved and sends a JWT back to the CLI. This means there will need to be a pending request stored in the web app. Let's just store these in memory for now and have them expire after 5 minutes.
+4) The CLI will store the JWT securely in the local OS (to start we just support Windows - but consider how it might work on Mac and Linux down the road.)
+5) The web application will be hosted in Azure App Service, so we will need to make a build and deployment script for this.
+6) The web UI should be implemented with Radzen blazor data grid and EF Core 10 for the sql database access.
+7) The CLI will be implemented with Spectre console library for .NET and should AOT compiled when it is published.
+
+Also, generate a cool logo for the project of a cartoon shallot with its hair on fire.
+
+If you have any questions or concerns while working on this design, please ask me!
+When referencing any specific libraries or components in .NET, ASP.NET, Blazor, or Radzen please read the full documentation first and make sure you're using the latest standards and versions of things, especially nuget packages.
+
+Write the full design into a design.md file in the root of the HotShallot directory. We're not writing any code yet, just producting a super great, detailed design document.
