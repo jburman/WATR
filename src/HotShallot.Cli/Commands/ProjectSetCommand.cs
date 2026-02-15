@@ -25,6 +25,9 @@ public class ProjectSetCommand : AsyncCommand<ProjectSetCommand.Settings>
     public override async Task<int> ExecuteAsync(CommandContext context, Settings settings, CancellationToken cancellationToken)
     {
         var projects = await _api.GetAsync<PaginatedResponse<ProjectDto>>("api/v1/projects");
+        Console.WriteLine(projects.TotalCount);
+        foreach (var p in projects.Items)
+            Console.WriteLine(p.Id + " : " + p.Name);
         var project = projects.Items.FirstOrDefault(p => p.Name.Equals(settings.Name, StringComparison.OrdinalIgnoreCase));
 
         if (project == null)
