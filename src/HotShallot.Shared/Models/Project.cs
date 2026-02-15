@@ -16,6 +16,8 @@ public class Project
     public DateTime CreatedAt { get; set; }
     
     public DateTime UpdatedAt { get; set; }
+
+    public List<string> TaskTypes { get; set; } = new();
     
     // Navigation properties
     public User? CreatedBy { get; set; }

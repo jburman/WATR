@@ -30,9 +30,96 @@ public class ProjectService
                 Description = p.Description,
                 CreatedByUserId = p.CreatedByUserId,
                 CreatedAt = p.CreatedAt,
-                UpdatedAt = p.UpdatedAt
+                UpdatedAt = p.UpdatedAt,
+                TaskTypes = p.TaskTypes
             })
             .ToListAsync();
+    }
+
+    public async Task<ProjectDto?> GetProjectAsync(Guid projectId, Guid userId)
+    {
+        using var db = await _dbFactory.CreateDbContextAsync();
+        
+        var isMember = await db.ProjectMembers.AnyAsync(m => m.ProjectId == projectId && m.UserId == userId);
+        if (!isMember) return null;
+
+        var p = await db.Projects.FindAsync(projectId);
+        if (p == null) return null;
+
+        return new ProjectDto
+        {
+            Id = p.Id,
+            Name = p.Name,
+            Description = p.Description,
+            CreatedByUserId = p.CreatedByUserId,
+            CreatedAt = p.CreatedAt,
+            UpdatedAt = p.UpdatedAt,
+            TaskTypes = p.TaskTypes
+        };
+    }
+
+    public async Task<ProjectDto> UpdateProjectAsync(Guid projectId, UpdateProjectRequest request, Guid userId)
+    {
+        using var db = await _dbFactory.CreateDbContextAsync();
+        
+        var member = await db.ProjectMembers.FirstOrDefaultAsync(m => m.ProjectId == projectId && m.UserId == userId);
+        if (member == null || member.Role != ProjectRole.Admin)
+        {
+            throw new UnauthorizedAccessException("User is not an admin of this project.");
+        }
+
+        var project = await db.Projects.FindAsync(projectId);
+        if (project == null) throw new Exception("Project not found");
+
+        // Validate name uniqueness if changed
+        if (project.Name != request.Name)
+        {
+            var exists = await db.Projects.AnyAsync(p => p.Name == request.Name);
+            if (exists) throw new Exception("Project name already exists.");
+        }
+
+        // Validate TaskTypes removal
+        var currentTypes = project.TaskTypes ?? new List<string>();
+        var newTypes = request.TaskTypes ?? new List<string>();
+        var removedTypes = currentTypes.Except(newTypes).ToList();
+
+        if (removedTypes.Any())
+        {
+            // Simplify query for SQLite compatibility in tests
+            var allTaskTypes = await db.TaskItems
+                .Where(t => t.ProjectId == projectId)
+                .Select(t => t.TaskType)
+                .ToListAsync();
+
+            var violations = allTaskTypes
+                .Where(t => t != null && removedTypes.Contains(t))
+                .Distinct()
+                .ToList();
+
+            if (violations.Any())
+            {
+                // We assume usedTypes elements are not null here because we filtered by removedTypes (strings)
+                throw new InvalidOperationException($"Cannot remove task types that are in use: {string.Join(", ", violations)}");
+            }
+        }
+
+        project.Name = request.Name;
+        project.Description = request.Description;
+        project.TaskTypes = newTypes;
+        project.UpdatedAt = DateTime.UtcNow;
+
+        await db.SaveChangesAsync();
+
+        return new ProjectDto
+        {
+            Id = project.Id,
+            Name = project.Name,
+            Description = project.Description,
+            CreatedByUserId = project.CreatedByUserId,
+            CreatedAt = project.CreatedAt,
+            UpdatedAt = project.UpdatedAt,
+            TaskTypes = project.TaskTypes
+        };
     }
 
     public async Task<PaginatedResponse<ProjectDto>> GetUserProjectsPaginatedAsync(Guid userId, int page, int pageSize)
@@ -53,7 +140,8 @@ public class ProjectService
                 Description = p.Description,
                 CreatedByUserId = p.CreatedByUserId,
                 CreatedAt = p.CreatedAt,
-                UpdatedAt = p.UpdatedAt
+                UpdatedAt = p.UpdatedAt,
+                TaskTypes = p.TaskTypes
             })
             .ToListAsync();
 
@@ -78,7 +166,10 @@ public class ProjectService
             Description = request.Description,
             CreatedByUserId = userId,
             CreatedAt = DateTime.UtcNow,
-            UpdatedAt = DateTime.UtcNow
+            UpdatedAt = DateTime.UtcNow,
+            TaskTypes = request.TaskTypes != null && request.TaskTypes.Any() 
+                ? request.TaskTypes 
+                : new List<string> { "Epic", "Task" }
         };
 
         project.Members.Add(new ProjectMember
@@ -97,7 +188,8 @@ public class ProjectService
             Description = project.Description,
             CreatedByUserId = project.CreatedByUserId,
             CreatedAt = project.CreatedAt,
-            UpdatedAt = project.UpdatedAt
+            UpdatedAt = project.UpdatedAt,
+            TaskTypes = project.TaskTypes
         };
     }
 }

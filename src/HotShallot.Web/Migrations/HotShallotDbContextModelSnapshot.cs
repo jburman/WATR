@@ -37,6 +37,10 @@ namespace HotShallot.Web.Migrations
                         .IsRequired()
                         .HasColumnType("TEXT");
 
+                    b.PrimitiveCollection<string>("TaskTypes")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("TEXT");
 
@@ -100,6 +104,16 @@ namespace HotShallot.Web.Migrations
                     b.Property<int>("Status")
                         .HasColumnType("INTEGER");
 
+                    b.Property<string>("TaskHandle")
+                        .HasMaxLength(50)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("TaskNumber")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("TaskType")
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("Title")
                         .IsRequired()
                         .HasColumnType("TEXT");
@@ -113,7 +127,11 @@ namespace HotShallot.Web.Migrations
 
                     b.HasIndex("CreatedByUserId");
 
-                    b.HasIndex("ProjectId");
+                    b.HasIndex("ProjectId", "TaskHandle")
+                        .IsUnique();
+
+                    b.HasIndex("ProjectId", "TaskNumber")
+                        .IsUnique();
 
                     b.ToTable("TaskItems");
                 });

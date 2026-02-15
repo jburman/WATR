@@ -13,7 +13,14 @@ public class TaskItem
     public string Title { get; set; } = string.Empty;
     
     public string Body { get; set; } = string.Empty;
+
+    public int TaskNumber { get; set; }
+
+    [MaxLength(50)]
+    public string? TaskHandle { get; set; }
     
+    public string? TaskType { get; set; }
+
     public TaskItemStatus Status { get; set; }
     
     public TaskPriority Priority { get; set; }

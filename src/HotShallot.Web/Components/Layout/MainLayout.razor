@@ -28,6 +28,7 @@
                                             Placeholder="Select Project..."
                                             Style="width: 250px;" />
                             <RadzenButton Icon="add" ButtonStyle="ButtonStyle.Primary" Variant="Variant.Text" Click="@OnCreateProject" Tooltip="Create New Project" />
+                            <RadzenButton Icon="edit" ButtonStyle="ButtonStyle.Secondary" Variant="Variant.Text" Click="@OnEditProject" Disabled="@(ProjectContext.SelectedProject == null)" Tooltip="Edit Project" />
                         </RadzenStack>
                     </Authorized>
                 </AuthorizeView>
@@ -89,6 +90,8 @@
     private async Task OnCreateProject()
     {
         var request = new CreateProjectRequest();
+        string taskTypesString = "Epic\nTask";
+
         var result = await DialogService.OpenAsync("Create New Project", ds =>
             @<RadzenStack Gap="1rem">
                 <RadzenFormField Text="Project Name">
@@ -96,6 +99,9 @@
                 </RadzenFormField>
                 <RadzenFormField Text="Description">
                     <RadzenTextArea @bind-Value="request.Description" style="width: 100%;" Rows="3" />
+                </RadzenFormField>
+                <RadzenFormField Text="Task Types (one per line)">
+                    <RadzenTextArea @bind-Value="taskTypesString" style="width: 100%;" Rows="3" />
                 </RadzenFormField>
                 <RadzenStack Orientation="Orientation.Horizontal" JustifyContent="JustifyContent.End" Gap="1rem">
                     <RadzenButton Text="Cancel" Click="@(() => ds.Close(false))" ButtonStyle="ButtonStyle.Light" />
@@ -112,6 +118,10 @@
                 return;
             }
 
+            request.TaskTypes = taskTypesString
+                .Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .ToList();
+
             var authState = await authenticationStateTask;
             var userId = Guid.Parse(authState.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)!.Value);
 
@@ -125,6 +135,65 @@
             catch (Exception ex)
             {
                 NotificationService.Notify(NotificationSeverity.Error, "Error", $"Failed to create project: {ex.Message}");
+            }
+        }
+    }
+
+    private async Task OnEditProject()
+    {
+        if (ProjectContext.SelectedProject == null) return;
+
+        var project = ProjectContext.SelectedProject;
+        var request = new UpdateProjectRequest
+        {
+            Name = project.Name,
+            Description = project.Description,
+            TaskTypes = project.TaskTypes.ToList()
+        };
+        
+        string taskTypesString = string.Join("\n", request.TaskTypes);
+
+        var result = await DialogService.OpenAsync("Edit Project", ds =>
+            @<RadzenStack Gap="1rem">
+                <RadzenFormField Text="Project Name">
+                    <RadzenTextBox @bind-Value="request.Name" style="width: 100%;" />
+                </RadzenFormField>
+                <RadzenFormField Text="Description">
+                    <RadzenTextArea @bind-Value="request.Description" style="width: 100%;" Rows="3" />
+                </RadzenFormField>
+                <RadzenFormField Text="Task Types (one per line)">
+                    <RadzenTextArea @bind-Value="taskTypesString" style="width: 100%;" Rows="5" />
+                </RadzenFormField>
+                <RadzenStack Orientation="Orientation.Horizontal" JustifyContent="JustifyContent.End" Gap="1rem">
+                    <RadzenButton Text="Cancel" Click="@(() => ds.Close(false))" ButtonStyle="ButtonStyle.Light" />
+                    <RadzenButton Text="Save" Click="@(() => ds.Close(true))" ButtonStyle="ButtonStyle.Primary" />
+                </RadzenStack>
+            </RadzenStack>
+        );
+
+        if (result == true)
+        {
+            if (string.IsNullOrWhiteSpace(request.Name))
+            {
+                NotificationService.Notify(NotificationSeverity.Error, "Error", "Project name is required.");
+                return;
+            }
+
+            request.TaskTypes = taskTypesString.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToList();
+
+            var authState = await authenticationStateTask;
+            var userId = Guid.Parse(authState.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)!.Value);
+
+            try 
+            {
+                var updatedProject = await ProjectService.UpdateProjectAsync(project.Id, request, userId);
+                await LoadProjects();
+                ProjectContext.SelectProject(updatedProject);
+                NotificationService.Notify(NotificationSeverity.Success, "Success", "Project updated.");
+            }
+            catch (Exception ex)
+            {
+                NotificationService.Notify(NotificationSeverity.Error, "Error", $"Failed to update project: {ex.Message}");
             }
         }
     }

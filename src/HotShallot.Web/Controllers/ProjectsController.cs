@@ -27,6 +27,41 @@ public class ProjectsController : ApiControllerBase
         return result;
     }
 
+    [HttpGet("{id}")]
+    public async Task<ActionResult<ProjectDto>> GetProject(Guid id)
+    {
+        var userIdStr = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (userIdStr == null) return Unauthorized();
+        var userId = Guid.Parse(userIdStr);
+
+        var project = await _projectService.GetProjectAsync(id, userId);
+        if (project == null) return NotFound();
+
+        return project;
+    }
+
+    [HttpPut("{id}")]
+    public async Task<ActionResult<ProjectDto>> UpdateProject(Guid id, UpdateProjectRequest request)
+    {
+        var userIdStr = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (userIdStr == null) return Unauthorized();
+        var userId = Guid.Parse(userIdStr);
+
+        try
+        {
+            var project = await _projectService.UpdateProjectAsync(id, request, userId);
+            return project;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return Forbid();
+        }
+        catch (Exception ex)
+        {
+            return BadRequest(ex.Message);
+        }
+    }
+
     [HttpPost]
     public async Task<ActionResult<ProjectDto>> CreateProject(CreateProjectRequest request)
     {

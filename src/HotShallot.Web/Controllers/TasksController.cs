@@ -67,6 +67,25 @@ public class TasksController : ApiControllerBase
         }
     }
 
+    [HttpGet("/api/v1/projects/{projectId}/tasks/handle/{handle}")]
+    public async Task<ActionResult<TaskItemDto>> GetTaskByHandle(Guid projectId, string handle)
+    {
+        var userIdStr = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (userIdStr == null) return Unauthorized();
+        var userId = Guid.Parse(userIdStr);
+
+        try
+        {
+            var task = await _taskService.GetTaskByHandleAsync(projectId, handle, userId);
+            if (task == null) return NotFound();
+            return task;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return Forbid();
+        }
+    }
+
     [HttpGet("{id}")]
     public async Task<ActionResult<TaskItemDto>> GetTask(Guid id)
     {
@@ -97,6 +116,7 @@ public class TasksController : ApiControllerBase
         {
             Title = request.Title ?? "",
             Body = request.Body ?? "",
+            TaskHandle = request.TaskHandle,
             Status = request.Status ?? TaskItemStatus.Open,
             Priority = request.Priority ?? TaskPriority.None
         };
@@ -108,6 +128,7 @@ public class TasksController : ApiControllerBase
 
             updateRequest.Title = request.Title ?? task.Title;
             updateRequest.Body = request.Body ?? task.Body;
+            updateRequest.TaskHandle = request.TaskHandle ?? task.TaskHandle;
             updateRequest.Status = request.Status == null ? task.Status : request.Status.Value;
             updateRequest.Priority = request.Priority == null ? task.Priority : request.Priority.Value;
 

@@ -46,6 +46,8 @@ public class HotShallotDbContext : DbContext
                 .WithMany()
                 .HasForeignKey(d => d.CreatedByUserId)
                 .OnDelete(DeleteBehavior.Restrict);
+
+            entity.PrimitiveCollection(e => e.TaskTypes);
         });
 
         // ProjectMember configuration
@@ -90,6 +92,12 @@ public class HotShallotDbContext : DbContext
 
             entity.Property(e => e.Priority)
                 .HasConversion<int>();
+
+            // Unique TaskNumber per Project
+            entity.HasIndex(e => new { e.ProjectId, e.TaskNumber }).IsUnique();
+            
+            // Unique TaskHandle per Project (allow nulls if needed, but unique if present)
+            entity.HasIndex(e => new { e.ProjectId, e.TaskHandle }).IsUnique();
         });
 
         // TaskNote configuration

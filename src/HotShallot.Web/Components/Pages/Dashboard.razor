@@ -149,6 +149,12 @@
                 <RadzenFormField Text="Priority">
                     <RadzenDropDown TValue="TaskPriority" Data="@(Enum.GetValues<TaskPriority>())" @bind-Value="newTask.Priority" />
                 </RadzenFormField>
+                @if (ProjectContext.SelectedProject?.TaskTypes?.Any() == true)
+                {
+                    <RadzenFormField Text="Task Type">
+                        <RadzenDropDown TValue="string" Data="@ProjectContext.SelectedProject.TaskTypes" @bind-Value="newTask.TaskType" />
+                    </RadzenFormField>
+                }
                 <RadzenStack Orientation="Orientation.Horizontal" JustifyContent="JustifyContent.End" Gap="1rem">
                     <RadzenButton Text="Cancel" Click="@(() => ds.Close(false))" ButtonStyle="ButtonStyle.Light" />
                     <RadzenButton Text="Create" Click="@(() => ds.Close(true))" ButtonStyle="ButtonStyle.Primary" />

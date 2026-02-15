@@ -10,18 +10,30 @@ public class ProjectDto
     public Guid CreatedByUserId { get; set; }
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }
+    public List<string> TaskTypes { get; set; } = new();
 }
 
 public class CreateProjectRequest
 {
     public string Name { get; set; } = string.Empty;
     public string Description { get; set; } = string.Empty;
+    public List<string> TaskTypes { get; set; } = new();
+}
+
+public class UpdateProjectRequest
+{
+    public string Name { get; set; } = string.Empty;
+    public string Description { get; set; } = string.Empty;
+    public List<string> TaskTypes { get; set; } = new();
 }
 
 public class TaskItemDto
 {
     public Guid Id { get; set; }
     public Guid ProjectId { get; set; }
+    public int TaskNumber { get; set; }
+    public string? TaskHandle { get; set; }
+    public string? TaskType { get; set; }
     public string Title { get; set; } = string.Empty;
     public string Body { get; set; } = string.Empty;
     public TaskItemStatus Status { get; set; }
@@ -39,6 +51,8 @@ public class TaskItemDto
 public class TaskItemSummaryDto
 {
     public Guid Id { get; set; }
+    public int TaskNumber { get; set; }
+    public string? TaskHandle { get; set; }
     public string Title { get; set; } = string.Empty;
     public TaskItemStatus Status { get; set; }
     public TaskPriority Priority { get; set; }
@@ -50,6 +64,7 @@ public class CreateTaskRequest
 {
     public string Title { get; set; } = string.Empty;
     public string Body { get; set; } = string.Empty;
+    public string? TaskType { get; set; }
     public TaskPriority Priority { get; set; } = TaskPriority.None;
 }
 
@@ -57,6 +72,8 @@ public class UpdateTaskRequest
 {
     public string Title { get; set; } = string.Empty;
     public string Body { get; set; } = string.Empty;
+    public string? TaskHandle { get; set; }
+    public string? TaskType { get; set; }
     public TaskItemStatus Status { get; set; }
     public TaskPriority Priority { get; set; }
 }
@@ -65,6 +82,8 @@ public class PatchTaskRequest
 {
     public string? Title { get; set; }
     public string? Body { get; set; }
+    public string? TaskHandle { get; set; }
+    public string? TaskType { get; set; }
     public TaskItemStatus? Status { get; set; }
     public TaskPriority? Priority { get; set; }
 }

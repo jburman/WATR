@@ -51,6 +51,8 @@ public class TaskService
             .Select(t => new TaskItemSummaryDto
             {
                 Id = t.Id,
+                TaskNumber = t.TaskNumber,
+                TaskHandle = t.TaskHandle,
                 Title = t.Title,
                 Status = t.Status,
                 Priority = t.Priority,
@@ -99,25 +101,51 @@ public class TaskService
             throw new UnauthorizedAccessException("User is not a member of this project");
         }
 
-        var task = new TaskItem
+        // Retry loop for TaskNumber generation
+        for (int i = 0; i < 3; i++)
         {
-            Id = Guid.CreateVersion7(),
-            ProjectId = projectId,
-            Title = request.Title,
-            Body = request.Body,
-            Priority = request.Priority,
-            Status = TaskItemStatus.Open,
-            CreatedByUserId = userId,
-            CreatedAt = DateTime.UtcNow,
-            UpdatedAt = DateTime.UtcNow
-        };
+            try
+            {
+                // Calculate next TaskNumber scoped to ProjectId
+                var maxNumber = await db.TaskItems
+                    .Where(t => t.ProjectId == projectId)
+                    .MaxAsync(t => (int?)t.TaskNumber) ?? 0;
 
-        db.TaskItems.Add(task);
-        await db.SaveChangesAsync();
+                var nextNumber = maxNumber + 1;
 
-        await _hubContext.Clients.Group(projectId.ToString()).SendAsync("TaskCreated", task.Id);
+                var task = new TaskItem
+                {
+                    Id = Guid.CreateVersion7(),
+                    ProjectId = projectId,
+                    Title = request.Title,
+                    Body = request.Body,
+                    TaskType = request.TaskType,
+                    Priority = request.Priority,
+                    Status = TaskItemStatus.Open,
+                    CreatedByUserId = userId,
+                    CreatedAt = DateTime.UtcNow,
+                    UpdatedAt = DateTime.UtcNow,
+                    TaskNumber = nextNumber
+                };
 
-        return MapToDto(task);
+                db.TaskItems.Add(task);
+                await db.SaveChangesAsync();
+
+                await _hubContext.Clients.Group(projectId.ToString()).SendAsync("TaskCreated", task.Id);
+
+                return MapToDto(task);
+            }
+            catch (DbUpdateException) when (i < 2)
+            {
+                // Likely a uniqueness violation on (ProjectId, TaskNumber) due to concurrency.
+                // Clear change tracker and retry.
+                db.ChangeTracker.Clear();
+                _logger.LogWarning("Concurrency conflict generating TaskNumber for project {ProjectId}. Retrying...", projectId);
+                await Task.Delay(50 * (i + 1)); // Backoff
+            }
+        }
+
+        throw new Exception("Failed to create task after multiple attempts due to concurrency.");
     }
 
     public async Task UpdateTaskAsync(Guid taskId, UpdateTaskRequest request, Guid userId)
@@ -134,6 +162,8 @@ public class TaskService
         task.Title = request.Title;
         task.Body = request.Body;
         task.Priority = request.Priority;
+        task.TaskHandle = request.TaskHandle;
+        task.TaskType = request.TaskType;
         
         if (task.Status != request.Status)
         {
@@ -152,6 +182,27 @@ public class TaskService
         await db.SaveChangesAsync();
 
         await _hubContext.Clients.Group(task.ProjectId.ToString()).SendAsync("TaskUpdated", task.Id);
+    }
+
+    public async Task<TaskItemDto?> GetTaskByHandleAsync(Guid projectId, string handle, Guid userId)
+    {
+        using var db = await _dbFactory.CreateDbContextAsync();
+        
+        if (!await VerifyMembershipAsync(db, projectId, userId))
+        {
+            throw new UnauthorizedAccessException("User is not a member of this project");
+        }
+
+        var task = await db.TaskItems
+            .Include(t => t.AssignedTo)
+            .Include(t => t.CreatedBy)
+            .Include(t => t.Notes)
+                .ThenInclude(n => n.Author)
+            .FirstOrDefaultAsync(t => t.ProjectId == projectId && t.TaskHandle == handle);
+
+        if (task == null) return null;
+
+        return MapToDto(task);
     }
 
     public async Task ClaimTaskAsync(Guid taskId, Guid userId)
@@ -257,6 +308,9 @@ public class TaskService
         {
             Id = t.Id,
             ProjectId = t.ProjectId,
+            TaskNumber = t.TaskNumber,
+            TaskHandle = t.TaskHandle,
+            TaskType = t.TaskType,
             Title = t.Title,
             Body = t.Body,
             Status = t.Status,
