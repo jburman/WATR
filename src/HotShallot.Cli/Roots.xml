@@ -1,3 +1,3 @@
 <linker>
-  <assembly fullname="HotShallot.Cli" preserve="all" />
+  <assembly fullname="shallot" preserve="all" />
 </linker>
