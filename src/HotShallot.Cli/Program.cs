@@ -23,21 +23,39 @@ static async Task<int> CreateAndRunApp(ITypeRegistrar registrar, string[] args)
     {
         config.SetApplicationName("shallot");
         
-        config.AddCommand<LoginCommand>("login");
-        config.AddCommand<LogoutCommand>("logout");
-        config.AddCommand<ListCommand>("list");
-        config.AddCommand<ShowCommand>("show");
-        config.AddCommand<AddCommand>("add");
-        config.AddCommand<UpdateCommand>("update");
-        config.AddCommand<ClaimCommand>("claim");
-        config.AddCommand<DoneCommand>("done");
-        config.AddCommand<NoteCommand>("note");
+            config.AddCommand<LoginCommand>("login");
         
-        config.AddBranch("project", project =>
-        {
-            project.AddCommand<ProjectSetCommand>("set");
-        });
-    });
+            config.AddCommand<LogoutCommand>("logout");
+        
+            config.AddCommand<StatusCommand>("status");
+        
+            config.AddCommand<ListCommand>("list");
+        
+            config.AddCommand<ShowCommand>("show");
+        
+            config.AddCommand<AddCommand>("add");
+        
+            config.AddCommand<UpdateCommand>("update");
+        
+            config.AddCommand<ClaimCommand>("claim");
+        
+            config.AddCommand<DoneCommand>("done");
+        
+            config.AddCommand<NoteCommand>("note");
+        
+            
+        
+            config.AddBranch("project", project =>
+        
+            {
+        
+                project.AddCommand<ProjectSetCommand>("set");
+        
+                project.AddCommand<ProjectListCommand>("list");
+        
+                project.AddCommand<ProjectCreateCommand>("create");
+        
+            });    });
 
     return await app.RunAsync(args);
 }

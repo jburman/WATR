@@ -1,0 +1,28 @@
+@page "/admin/users"
+@using HotShallot.Shared.DTOs
+@using HotShallot.Web.Services
+@using Microsoft.AspNetCore.Authorization
+@attribute [Authorize]
+@inject UserService UserService
+
+<RadzenStack Gap="1rem">
+    <RadzenText TextStyle="TextStyle.H4">All Users</RadzenText>
+
+    <RadzenDataGrid Data="@users" TItem="UserDto" AllowPaging="true" PageSize="20" AllowSorting="true" AllowFiltering="true" class="rz-shadow-2">
+        <Columns>
+            <RadzenDataGridColumn TItem="UserDto" Property="Id" Title="ID" Width="300px" />
+            <RadzenDataGridColumn TItem="UserDto" Property="DisplayName" Title="Display Name" />
+            <RadzenDataGridColumn TItem="UserDto" Property="Email" Title="Email" />
+            <RadzenDataGridColumn TItem="UserDto" Property="CreatedAt" Title="Joined" FormatString="{0:d}" />
+        </Columns>
+    </RadzenDataGrid>
+</RadzenStack>
+
+@code {
+    private List<UserDto> users = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        users = await UserService.GetAllUsersAsync();
+    }
+}

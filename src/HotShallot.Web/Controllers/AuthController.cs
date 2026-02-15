@@ -20,18 +20,21 @@ public class AuthController : ControllerBase
     private readonly DeviceCodeService _deviceCodeService;
     private readonly HotShallotDbContext _db;
     private readonly IMemoryCache _cache;
+    private readonly ILogger<AuthController> _logger;
 
-    public AuthController(PassKeyService passKeyService, DeviceCodeService deviceCodeService, HotShallotDbContext db, IMemoryCache cache)
+    public AuthController(PassKeyService passKeyService, DeviceCodeService deviceCodeService, HotShallotDbContext db, IMemoryCache cache, ILogger<AuthController> logger)
     {
         _passKeyService = passKeyService;
         _deviceCodeService = deviceCodeService;
         _db = db;
         _cache = cache;
+        _logger = logger;
     }
 
     [HttpPost("passkey/register-options")]
     public async Task<IActionResult> RegisterOptions([FromBody] RegisterOptionsRequest request)
     {
+        _logger.LogInformation("RegisterOptions: Email={Email}", request.Email);
         try
         {
             var user = await _db.Users
@@ -62,6 +65,7 @@ public class AuthController : ControllerBase
         }
         catch (Exception ex)
         {
+            _logger.LogError(ex, "RegisterOptions Error");
             return BadRequest(ex.Message);
         }
     }
@@ -69,10 +73,12 @@ public class AuthController : ControllerBase
     [HttpPost("passkey/register")]
     public async Task<IActionResult> Register([FromBody] AuthenticatorAttestationRawResponse response, [FromQuery] string email, [FromQuery] string displayName)
     {
+        _logger.LogInformation("Register: Email={Email}, DisplayName={DisplayName}", email, displayName);
         try
         {
             if (!_cache.TryGetValue($"reg_options_{email}", out CredentialCreateOptions? options) || options == null)
             {
+                _logger.LogWarning("Register: Options not found for {Email}", email);
                 return BadRequest("Registration options not found or expired");
             }
 
@@ -94,10 +100,12 @@ public class AuthController : ControllerBase
 
             _cache.Remove($"reg_options_{email}");
 
+            _logger.LogInformation("Register: Success for {Email}", email);
             return Ok();
         }
         catch (Exception ex)
         {
+            _logger.LogError(ex, "Register Error");
             return BadRequest(ex.Message);
         }
     }
@@ -105,6 +113,7 @@ public class AuthController : ControllerBase
     [HttpPost("passkey/login-options")]
     public async Task<IActionResult> LoginOptions([FromBody] LoginOptionsRequest request)
     {
+        _logger.LogInformation("LoginOptions: Email={Email}", request.Email);
         try
         {
             var options = await _passKeyService.MakeAssertionOptionsAsync(request.Email);
@@ -113,6 +122,7 @@ public class AuthController : ControllerBase
         }
         catch (Exception ex)
         {
+            _logger.LogError(ex, "LoginOptions Error");
             return BadRequest(ex.Message);
         }
     }
@@ -120,10 +130,12 @@ public class AuthController : ControllerBase
     [HttpPost("passkey/login")]
     public async Task<IActionResult> Login([FromBody] AuthenticatorAssertionRawResponse response, [FromQuery] string email)
     {
+        _logger.LogInformation("Login: Email={Email}", email);
         try
         {
             if (!_cache.TryGetValue($"login_options_{email}", out AssertionOptions? options) || options == null)
             {
+                _logger.LogWarning("Login: Options not found for {Email}", email);
                 return BadRequest("Login options not found or expired");
             }
 
@@ -145,10 +157,12 @@ public class AuthController : ControllerBase
 
             _cache.Remove($"login_options_{email}");
 
+            _logger.LogInformation("Login: Success for {Email}, UserId={UserId}", email, user.Id);
             return Ok();
         }
         catch (Exception ex)
         {
+            _logger.LogError(ex, "Login Error");
             return BadRequest(ex.Message);
         }
     }
@@ -156,6 +170,7 @@ public class AuthController : ControllerBase
     [HttpPost("device-login-init")]
     public IActionResult DeviceLoginInit([FromBody] DeviceLoginInitRequest request)
     {
+        _logger.LogInformation("DeviceLoginInit: Code={Code}", request.Code);
         _deviceCodeService.Initiate(request.Code);
         return Ok();
     }
@@ -171,6 +186,7 @@ public class AuthController : ControllerBase
 
         if (request.Status == DeviceCodeStatus.Approved)
         {
+            _logger.LogInformation("DeviceLoginStatus: Approved for Code={Code}", code);
             return Ok(new
             {
                 status = "approved",
@@ -185,6 +201,7 @@ public class AuthController : ControllerBase
     [HttpPost("logout")]
     public async Task<IActionResult> Logout()
     {
+        _logger.LogInformation("Logout: User={User}", User.FindFirstValue(ClaimTypes.NameIdentifier));
         await HttpContext.SignOutAsync("Cookies");
         return Ok();
     }

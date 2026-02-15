@@ -77,7 +77,7 @@
         var authState = await authenticationStateTask;
         currentUserId = Guid.Parse(authState.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)!.Value);
         
-        task = await TaskService.GetTaskAsync(TaskId);
+        task = await TaskService.GetTaskAsync(TaskId, currentUserId);
     }
 
     async Task SaveTask()
@@ -92,7 +92,7 @@
                 Body = task.Body,
                 Status = task.Status,
                 Priority = task.Priority
-            });
+            }, currentUserId);
             NotificationService.Notify(NotificationSeverity.Success, "Success", "Task updated");
             DialogService.Close(true);
         }
@@ -110,7 +110,7 @@
         {
             await TaskService.AddNoteAsync(task.Id, newNoteContent, currentUserId);
             newNoteContent = "";
-            task = await TaskService.GetTaskAsync(TaskId); // Refresh
+            task = await TaskService.GetTaskAsync(TaskId, currentUserId); // Refresh
             StateHasChanged();
         }
         catch (Exception ex)

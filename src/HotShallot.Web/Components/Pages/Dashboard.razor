@@ -26,7 +26,7 @@
             <RadzenLabel Text="Status:" Style="margin-right: 0.5rem;" />
             <RadzenDropDown TValue="IEnumerable<TaskItemStatus>" @bind-Value="selectedStatuses" Data="@allStatuses" 
                             Multiple="true" Chips="true" AllowClear="true" Placeholder="Select statuses..."
-                            Change="@(args => LoadTasks())" Style="width: 500px;" H PopupStyle="max-height: 300px; overflow-y: auto;" />
+                            Change="@(args => LoadTasks())" Style="width: 500px;" MaxHeight="400px" />
         </RadzenStack>
 
         <RadzenDataGrid @ref="grid" Data="@tasks" TItem="TaskItemSummaryDto" 
@@ -107,9 +107,10 @@
     {
         await InvokeAsync(async () =>
         {
-            if (hubConnection?.State == HubConnectionState.Connected && ProjectContext.SelectedProject != null)
+            var project = ProjectContext.SelectedProject;
+            if (hubConnection?.State == HubConnectionState.Connected && project != null)
             {
-                await hubConnection.InvokeAsync("JoinProject", ProjectContext.SelectedProject.Id.ToString());
+                await hubConnection.InvokeAsync("JoinProject", project.Id.ToString());
             }
             await LoadTasks();
             StateHasChanged();

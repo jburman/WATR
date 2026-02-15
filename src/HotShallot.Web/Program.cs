@@ -83,6 +83,7 @@ builder.Services.AddScoped<DeviceCodeService>();
 builder.Services.AddScoped<TaskService>();
 builder.Services.AddScoped<ProjectService>();
 builder.Services.AddScoped<ProjectContextService>();
+builder.Services.AddScoped<UserService>();
 builder.Services.AddMemoryCache();
 
 builder.Services.AddHealthChecks()
@@ -141,3 +142,5 @@ app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();
 
 app.Run();
+
+public partial class Program { }

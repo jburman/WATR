@@ -12,16 +12,25 @@ public class TaskService
 {
     private readonly IDbContextFactory<HotShallotDbContext> _dbFactory;
     private readonly IHubContext<TaskHub> _hubContext;
+    private readonly ILogger<TaskService> _logger;
 
-    public TaskService(IDbContextFactory<HotShallotDbContext> dbFactory, IHubContext<TaskHub> hubContext)
+    public TaskService(IDbContextFactory<HotShallotDbContext> dbFactory, IHubContext<TaskHub> hubContext, ILogger<TaskService> logger)
     {
         _dbFactory = dbFactory;
         _hubContext = hubContext;
+        _logger = logger;
     }
 
     public async Task<PaginatedResponse<TaskItemSummaryDto>> GetTasksAsync(Guid projectId, IEnumerable<TaskItemStatus>? statuses, TaskPriority? priorityFilter, bool? myTasksOnly, Guid currentUserId, int page, int pageSize)
     {
         using var db = await _dbFactory.CreateDbContextAsync();
+        
+        if (!await VerifyMembershipAsync(db, projectId, currentUserId))
+        {
+            _logger.LogWarning("User {UserId} attempted to access project {ProjectId} without membership", currentUserId, projectId);
+            throw new UnauthorizedAccessException("User is not a member of this project");
+        }
+
         var query = db.TaskItems
             .Where(t => t.ProjectId == projectId);
 
@@ -59,7 +68,7 @@ public class TaskService
         };
     }
 
-    public async Task<TaskItemDto?> GetTaskAsync(Guid taskId)
+    public async Task<TaskItemDto?> GetTaskAsync(Guid taskId, Guid userId)
     {
         using var db = await _dbFactory.CreateDbContextAsync();
         var task = await db.TaskItems
@@ -71,12 +80,25 @@ public class TaskService
 
         if (task == null) return null;
 
+        if (!await VerifyMembershipAsync(db, task.ProjectId, userId))
+        {
+            _logger.LogWarning("User {UserId} attempted to access task {TaskId} without project membership", userId, taskId);
+            throw new UnauthorizedAccessException("User is not a member of this project");
+        }
+
         return MapToDto(task);
     }
 
     public async Task<TaskItemDto> CreateTaskAsync(Guid projectId, CreateTaskRequest request, Guid userId)
     {
         using var db = await _dbFactory.CreateDbContextAsync();
+        
+        if (!await VerifyMembershipAsync(db, projectId, userId))
+        {
+            _logger.LogWarning("User {UserId} attempted to create task in project {ProjectId} without membership", userId, projectId);
+            throw new UnauthorizedAccessException("User is not a member of this project");
+        }
+
         var task = new TaskItem
         {
             Id = Guid.CreateVersion7(),
@@ -98,11 +120,16 @@ public class TaskService
         return MapToDto(task);
     }
 
-    public async Task UpdateTaskAsync(Guid taskId, UpdateTaskRequest request)
+    public async Task UpdateTaskAsync(Guid taskId, UpdateTaskRequest request, Guid userId)
     {
         using var db = await _dbFactory.CreateDbContextAsync();
         var task = await db.TaskItems.FindAsync(taskId);
         if (task == null) throw new Exception("Task not found");
+
+        if (!await VerifyMembershipAsync(db, task.ProjectId, userId))
+        {
+            throw new UnauthorizedAccessException("User is not a member of this project");
+        }
 
         task.Title = request.Title;
         task.Body = request.Body;
@@ -133,6 +160,11 @@ public class TaskService
         var task = await db.TaskItems.FindAsync(taskId);
         if (task == null) throw new Exception("Task not found");
 
+        if (!await VerifyMembershipAsync(db, task.ProjectId, userId))
+        {
+            throw new UnauthorizedAccessException("User is not a member of this project");
+        }
+
         if (task.AssignedToUserId != null && task.AssignedToUserId != userId)
         {
             throw new Exception("Task already assigned");
@@ -145,11 +177,26 @@ public class TaskService
         await _hubContext.Clients.Group(task.ProjectId.ToString()).SendAsync("TaskClaimed", task.Id, userId);
     }
 
-    public async Task ReleaseTaskAsync(Guid taskId)
+    public async Task ReleaseTaskAsync(Guid taskId, Guid userId)
     {
         using var db = await _dbFactory.CreateDbContextAsync();
         var task = await db.TaskItems.FindAsync(taskId);
         if (task == null) throw new Exception("Task not found");
+
+        if (!await VerifyMembershipAsync(db, task.ProjectId, userId))
+        {
+            throw new UnauthorizedAccessException("User is not a member of this project");
+        }
+
+        // Logic fix: Only assigned user or admin can release.
+        // We need to fetch membership role.
+        var member = await db.ProjectMembers.FirstOrDefaultAsync(m => m.ProjectId == task.ProjectId && m.UserId == userId);
+        if (member == null) throw new UnauthorizedAccessException("User is not a member");
+
+        if (task.AssignedToUserId != userId && member.Role != ProjectRole.Admin)
+        {
+             throw new UnauthorizedAccessException("Only the assignee or an admin can release this task.");
+        }
 
         task.AssignedToUserId = null;
         task.UpdatedAt = DateTime.UtcNow;
@@ -158,9 +205,19 @@ public class TaskService
         await _hubContext.Clients.Group(task.ProjectId.ToString()).SendAsync("TaskReleased", task.Id);
     }
 
-    public async Task AddNoteAsync(Guid taskId, string content, Guid userId)
+    public async Task<TaskNoteDto> AddNoteAsync(Guid taskId, string content, Guid userId)
     {
         using var db = await _dbFactory.CreateDbContextAsync();
+        
+        // Need to fetch task first to check project ID
+        var task = await db.TaskItems.FindAsync(taskId);
+        if (task == null) throw new Exception("Task not found");
+
+        if (!await VerifyMembershipAsync(db, task.ProjectId, userId))
+        {
+            throw new UnauthorizedAccessException("User is not a member of this project");
+        }
+
         var note = new TaskNote
         {
             Id = Guid.CreateVersion7(),
@@ -171,12 +228,27 @@ public class TaskService
         };
 
         db.TaskNotes.Add(note);
-        var task = await db.TaskItems.FindAsync(taskId);
-        if (task != null) task.UpdatedAt = DateTime.UtcNow;
+        task.UpdatedAt = DateTime.UtcNow;
         
         await db.SaveChangesAsync();
 
-        await _hubContext.Clients.Group(task?.ProjectId.ToString() ?? "").SendAsync("NoteAdded", taskId);
+        // Fetch author name for DTO
+        var author = await db.Users.FindAsync(userId);
+
+        await _hubContext.Clients.Group(task.ProjectId.ToString()).SendAsync("NoteAdded", taskId);
+
+        return new TaskNoteDto
+        {
+            Id = note.Id,
+            AuthorDisplayName = author?.DisplayName ?? "Unknown",
+            Content = note.Content,
+            CreatedAt = note.CreatedAt
+        };
+    }
+
+    private async Task<bool> VerifyMembershipAsync(HotShallotDbContext db, Guid projectId, Guid userId)
+    {
+        return await db.ProjectMembers.AnyAsync(m => m.ProjectId == projectId && m.UserId == userId);
     }
 
     private static TaskItemDto MapToDto(TaskItem t)

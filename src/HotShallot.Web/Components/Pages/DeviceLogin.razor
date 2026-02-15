@@ -12,12 +12,12 @@
                 <RadzenText TextStyle="TextStyle.H4" class="rz-mb-4 text-center">Authorize Device 📟</RadzenText>
                 
                 <div class="rz-p-4">
-                    <RadzenText TextStyle="TextStyle.Body1" class="rz-mb-4">
-                        Enter the 8-digit code shown in your terminal.
+                    <RadzenText TextStyle="TextStyle.Body1" class="rz-mb-4 text-center">
+                        Please enter the device code displayed in your terminal to authorize the CLI.
                     </RadzenText>
                     
                     <RadzenFormField Text="Device Code" class="w-100 rz-mb-4">
-                        <RadzenTextBox @bind-Value="code" class="w-100 text-center" Style="font-size: 2rem; letter-spacing: 0.5rem;" />
+                        <RadzenTextBox @bind-Value="code" class="w-100 text-center" Style="font-size: 2rem; letter-spacing: 0.5rem;" Placeholder="XXXX-XXXX" />
                     </RadzenFormField>
                     
                     <RadzenButton Text="Authorize" Click="@OnAuthorize" class="w-100" Busy="@isBusy" />
@@ -35,6 +35,20 @@
     {
         if (string.IsNullOrWhiteSpace(code)) return;
 
+        // Normalize code: remove dashes and trim
+        var normalizedCode = code.Replace("-", "").Trim();
+        
+        // If it's 8 digits, ensure it has the dash for the backend check if stored with dash
+        // Backend stores with dash? Let's check DeviceCodeService.
+        // Assuming backend stores AS GENERATED.
+        // CLI generates: $"{num.Substring(0, 4)}-{num.Substring(4, 4)}" -> 1234-5678
+        // So backend expects DASH.
+        
+        if (normalizedCode.Length == 8)
+        {
+            normalizedCode = normalizedCode.Insert(4, "-");
+        }
+
         isBusy = true;
         try
         {
@@ -49,7 +63,7 @@
 
             var userId = Guid.Parse(userIdClaim.Value);
             
-            var success = await DeviceCodeService.ApproveAsync(code, userId);
+            var success = await DeviceCodeService.ApproveAsync(normalizedCode, userId);
             if (success)
             {
                 NotificationService.Notify(NotificationSeverity.Success, "Success", "Device authorized!");

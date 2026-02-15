@@ -1,5 +1,5 @@
 using HotShallot.Shared.DTOs;
-using HotShallot.Web.Data;
+using HotShallot.Web.Services;
 using Microsoft.AspNetCore.Mvc;
 using System.Security.Claims;
 
@@ -7,28 +7,31 @@ namespace HotShallot.Web.Controllers;
 
 public class UserController : ApiControllerBase
 {
-    private readonly HotShallotDbContext _db;
+    private readonly UserService _userService;
+    private readonly ILogger<UserController> _logger;
 
-    public UserController(HotShallotDbContext db)
+    public UserController(UserService userService, ILogger<UserController> logger)
     {
-        _db = db;
+        _userService = userService;
+        _logger = logger;
     }
 
     [HttpGet("me")]
     public async Task<ActionResult<UserDto>> GetMe()
     {
         var userIdStr = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        _logger.LogInformation("GetMe: User={UserId}", userIdStr);
+        
         if (userIdStr == null) return Unauthorized();
         var userId = Guid.Parse(userIdStr);
 
-        var user = await _db.Users.FindAsync(userId);
-        if (user == null) return NotFound();
-
-        return new UserDto
+        var user = await _userService.GetUserAsync(userId);
+        if (user == null)
         {
-            Id = user.Id,
-            Email = user.Email,
-            DisplayName = user.DisplayName
-        };
+            _logger.LogWarning("GetMe: User {UserId} not found in DB", userId);
+            return NotFound();
+        }
+
+        return user;
     }
 }

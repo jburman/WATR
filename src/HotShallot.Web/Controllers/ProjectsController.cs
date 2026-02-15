@@ -1,20 +1,19 @@
 using HotShallot.Shared.DTOs;
-using HotShallot.Shared.Enums;
-using HotShallot.Shared.Models;
-using HotShallot.Web.Data;
+using HotShallot.Web.Services;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
 using System.Security.Claims;
 
 namespace HotShallot.Web.Controllers;
 
 public class ProjectsController : ApiControllerBase
 {
-    private readonly HotShallotDbContext _db;
+    private readonly ProjectService _projectService;
+    private readonly ILogger<ProjectsController> _logger;
 
-    public ProjectsController(HotShallotDbContext db)
+    public ProjectsController(ProjectService projectService, ILogger<ProjectsController> logger)
     {
-        _db = db;
+        _projectService = projectService;
+        _logger = logger;
     }
 
     [HttpGet]
@@ -24,32 +23,8 @@ public class ProjectsController : ApiControllerBase
         if (userIdStr == null) return Unauthorized();
         var userId = Guid.Parse(userIdStr);
 
-        var query = _db.Projects
-            .Where(p => p.Members.Any(m => m.UserId == userId));
-
-        var totalCount = await query.CountAsync();
-        var items = await query
-            .OrderByDescending(p => p.UpdatedAt)
-            .Skip((page - 1) * pageSize)
-            .Take(pageSize)
-            .Select(p => new ProjectDto
-            {
-                Id = p.Id,
-                Name = p.Name,
-                Description = p.Description,
-                CreatedByUserId = p.CreatedByUserId,
-                CreatedAt = p.CreatedAt,
-                UpdatedAt = p.UpdatedAt
-            })
-            .ToListAsync();
-
-        return new PaginatedResponse<ProjectDto>
-        {
-            Items = items,
-            Page = page,
-            PageSize = pageSize,
-            TotalCount = totalCount
-        };
+        var result = await _projectService.GetUserProjectsPaginatedAsync(userId, page, pageSize);
+        return result;
     }
 
     [HttpPost]
@@ -59,33 +34,8 @@ public class ProjectsController : ApiControllerBase
         if (userIdStr == null) return Unauthorized();
         var userId = Guid.Parse(userIdStr);
 
-        var project = new Project
-        {
-            Id = Guid.NewGuid(),
-            Name = request.Name,
-            Description = request.Description,
-            CreatedByUserId = userId,
-            CreatedAt = DateTime.UtcNow,
-            UpdatedAt = DateTime.UtcNow
-        };
+        var project = await _projectService.CreateProjectAsync(request, userId);
 
-        project.Members.Add(new ProjectMember
-        {
-            UserId = userId,
-            Role = ProjectRole.Admin
-        });
-
-        _db.Projects.Add(project);
-        await _db.SaveChangesAsync();
-
-        return CreatedAtAction(nameof(GetProjects), new { id = project.Id }, new ProjectDto
-        {
-            Id = project.Id,
-            Name = project.Name,
-            Description = project.Description,
-            CreatedByUserId = project.CreatedByUserId,
-            CreatedAt = project.CreatedAt,
-            UpdatedAt = project.UpdatedAt
-        });
+        return CreatedAtAction(nameof(GetProjects), new { id = project.Id }, project);
     }
 }

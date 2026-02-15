@@ -23,6 +23,7 @@ namespace HotShallot.Shared.Json;
 [JsonSerializable(typeof(List<TaskItemSummaryDto>))]
 [JsonSerializable(typeof(List<TaskNoteDto>))]
 [JsonSerializable(typeof(ProjectDto))]
+[JsonSerializable(typeof(CreateProjectRequest))]
 public partial class AppJsonContext : JsonSerializerContext
 {
 }
