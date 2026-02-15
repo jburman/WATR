@@ -10,33 +10,37 @@ services.AddSingleton<TokenStore>();
 services.AddSingleton<ApiClient>();
 
 var registrar = new TypeRegistrar(services);
-#pragma warning disable IL2026 // Members annotated with 'RequiresUnreferencedCodeAttribute' require dynamic access otherwise can break functionality when trimming application code
-#pragma warning disable IL3050 // Calling members annotated with 'RequiresDynamicCodeAttribute' may break functionality when AOT compiling.
-var app = new CommandApp(registrar);
-#pragma warning restore IL3050
-#pragma warning restore IL2026
 
-app.Configure(config =>
+return await CreateAndRunApp(registrar, args);
+
+[UnconditionalSuppressMessage("Trimming", "IL2026:RequiresUnreferencedCode", Justification = "Spectre.Console.Cli usage is AOT-aware where possible")]
+[UnconditionalSuppressMessage("AOT", "IL3050:RequiresDynamicCode", Justification = "Spectre.Console.Cli uses dynamic code generation")]
+static async Task<int> CreateAndRunApp(ITypeRegistrar registrar, string[] args)
 {
-    config.SetApplicationName("shallot");
-    
-    config.AddCommand<LoginCommand>("login");
-    config.AddCommand<LogoutCommand>("logout");
-    config.AddCommand<ListCommand>("list");
-    config.AddCommand<ShowCommand>("show");
-    config.AddCommand<AddCommand>("add");
-    config.AddCommand<UpdateCommand>("update");
-    config.AddCommand<ClaimCommand>("claim");
-    config.AddCommand<DoneCommand>("done");
-    config.AddCommand<NoteCommand>("note");
-    
-    config.AddBranch("project", project =>
-    {
-        project.AddCommand<ProjectSetCommand>("set");
-    });
-});
+    var app = new CommandApp(registrar);
 
-return await app.RunAsync(args);
+    app.Configure(config =>
+    {
+        config.SetApplicationName("shallot");
+        
+        config.AddCommand<LoginCommand>("login");
+        config.AddCommand<LogoutCommand>("logout");
+        config.AddCommand<ListCommand>("list");
+        config.AddCommand<ShowCommand>("show");
+        config.AddCommand<AddCommand>("add");
+        config.AddCommand<UpdateCommand>("update");
+        config.AddCommand<ClaimCommand>("claim");
+        config.AddCommand<DoneCommand>("done");
+        config.AddCommand<NoteCommand>("note");
+        
+        config.AddBranch("project", project =>
+        {
+            project.AddCommand<ProjectSetCommand>("set");
+        });
+    });
+
+    return await app.RunAsync(args);
+}
 
 // Simple TypeRegistrar for Spectre.Console
 public sealed class TypeRegistrar : ITypeRegistrar
@@ -53,7 +57,8 @@ public sealed class TypeRegistrar : ITypeRegistrar
         return new TypeResolver(_builder.BuildServiceProvider());
     }
 
-    public void Register(Type service, [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] Type implementation)
+    [UnconditionalSuppressMessage("Trimming", "IL2067:TargetParameterArgumentDoesNotSatisfyRequirement", Justification = "Spectre.Console.Cli guarantees types are valid for DI")]
+    public void Register(Type service, Type implementation)
     {
         _builder.AddSingleton(service, implementation);
     }
