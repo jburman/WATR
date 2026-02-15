@@ -1,0 +1,38 @@
+name: Build and Deploy
+
+on:
+  push:
+    branches: [master]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - run: dotnet restore
+      - run: dotnet build --no-restore --configuration Release
+      - run: dotnet publish src/HotShallot.Web -c Release -o ./publish/web
+      - uses: actions/upload-artifact@v4
+        with:
+          name: web-app
+          path: ./publish/web
+
+  publish-cli:
+    runs-on: windows-latest
+    needs: build
+    strategy:
+      matrix:
+        rid: [win-x64, linux-x64, osx-x64]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - run: dotnet publish src/HotShallot.Cli -c Release -r ${{ matrix.rid }} -o ./publish/cli/${{ matrix.rid }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: shallot-${{ matrix.rid }}
+          path: ./publish/cli/${{ matrix.rid }}

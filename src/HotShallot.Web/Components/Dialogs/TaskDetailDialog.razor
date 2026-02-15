@@ -1,0 +1,121 @@
+@using HotShallot.Web.Services
+@using Markdig
+@inject TaskService TaskService
+@inject DialogService DialogService
+@inject NotificationService NotificationService
+@inject ProjectContextService ProjectContext
+
+<RadzenStack Gap="1rem" Style="padding: 1rem;">
+    @if (task == null)
+    {
+        <RadzenProgressBar Circular="true" Value="100" />
+    }
+    else
+    {
+        <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" JustifyContent="JustifyContent.SpaceBetween">
+            <RadzenTextBox @bind-Value="task.Title" Style="width: 70%; font-size: 1.5rem;" />
+            <RadzenStack Orientation="Orientation.Horizontal" Gap="0.5rem">
+                <RadzenDropDown TValue="TaskItemStatus" Data="@(Enum.GetValues<TaskItemStatus>())" @bind-Value="task.Status" Style="width: 150px;" />
+                <RadzenDropDown TValue="TaskPriority" Data="@(Enum.GetValues<TaskPriority>())" @bind-Value="task.Priority" Style="width: 120px;" />
+            </RadzenStack>
+        </RadzenStack>
+
+        <RadzenTabs>
+            <Tabs>
+                <RadzenTabsItem Text="View">
+                    <div class="rz-p-4 rz-border-radius-1 rz-background-color-neutral-100" style="min-height: 200px; max-height: 400px; overflow-y: auto;">
+                        @((MarkupString)Markdown.ToHtml(task.Body ?? ""))
+                    </div>
+                </RadzenTabsItem>
+                <RadzenTabsItem Text="Edit">
+                    <RadzenTextArea @bind-Value="task.Body" Style="width: 100%; height: 300px; font-family: monospace;" />
+                </RadzenTabsItem>
+            </Tabs>
+        </RadzenTabs>
+
+        <RadzenText TextStyle="TextStyle.H6" class="rz-mt-4">Notes</RadzenText>
+        <RadzenStack Gap="0.5rem" Style="max-height: 200px; overflow-y: auto;">
+            @foreach (var note in task.Notes.OrderByDescending(n => n.CreatedAt))
+            {
+                <RadzenCard Variant="Variant.Flat" class="rz-p-2">
+                    <RadzenStack Orientation="Orientation.Horizontal" JustifyContent="JustifyContent.SpaceBetween">
+                        <RadzenText TextStyle="TextStyle.Caption"><b>@note.AuthorDisplayName</b></RadzenText>
+                        <RadzenText TextStyle="TextStyle.Caption">@note.CreatedAt.ToLocalTime().ToString("g")</RadzenText>
+                    </RadzenStack>
+                    <div class="rz-mt-1">
+                        @((MarkupString)Markdown.ToHtml(note.Content))
+                    </div>
+                </RadzenCard>
+            }
+        </RadzenStack>
+
+        <RadzenStack Orientation="Orientation.Horizontal" Gap="0.5rem" class="rz-mt-2">
+            <RadzenTextArea @bind-Value="newNoteContent" Placeholder="Add a note..." Style="width: 100%;" Rows="2" />
+            <RadzenButton Icon="send" Click="@AddNote" Disabled="@string.IsNullOrWhiteSpace(newNoteContent)" />
+        </RadzenStack>
+
+        <RadzenStack Orientation="Orientation.Horizontal" JustifyContent="JustifyContent.End" Gap="1rem" class="rz-mt-4">
+            <RadzenButton Text="Close" Click="@(() => DialogService.Close())" ButtonStyle="ButtonStyle.Light" />
+            <RadzenButton Text="Save Changes" Click="@SaveTask" ButtonStyle="ButtonStyle.Primary" />
+        </RadzenStack>
+    }
+</RadzenStack>
+
+@code {
+    [Parameter]
+    public Guid TaskId { get; set; }
+
+    [CascadingParameter]
+    private Task<AuthenticationState> authenticationStateTask { get; set; } = default!;
+
+    private TaskItemDto? task;
+    private string newNoteContent = "";
+    private Guid currentUserId;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await authenticationStateTask;
+        currentUserId = Guid.Parse(authState.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)!.Value);
+        
+        task = await TaskService.GetTaskAsync(TaskId);
+    }
+
+    async Task SaveTask()
+    {
+        if (task == null) return;
+
+        try
+        {
+            await TaskService.UpdateTaskAsync(task.Id, new UpdateTaskRequest
+            {
+                Title = task.Title,
+                Body = task.Body,
+                Status = task.Status,
+                Priority = task.Priority
+            });
+            NotificationService.Notify(NotificationSeverity.Success, "Success", "Task updated");
+            DialogService.Close(true);
+        }
+        catch (Exception ex)
+        {
+            NotificationService.Notify(NotificationSeverity.Error, "Error", ex.Message);
+        }
+    }
+
+    async Task AddNote()
+    {
+        if (task == null || string.IsNullOrWhiteSpace(newNoteContent)) return;
+
+        try
+        {
+            await TaskService.AddNoteAsync(task.Id, newNoteContent, currentUserId);
+            newNoteContent = "";
+            task = await TaskService.GetTaskAsync(TaskId); // Refresh
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            NotificationService.Notify(NotificationSeverity.Error, "Error", ex.Message);
+        }
+    }
+}

@@ -1,0 +1,193 @@
+@page "/"
+@using HotShallot.Web.Services
+@using HotShallot.Web.Components.Dialogs
+@using Microsoft.AspNetCore.SignalR.Client
+@using Microsoft.AspNetCore.Authorization
+@attribute [Authorize]
+@inject TaskService TaskService
+@inject ProjectContextService ProjectContext
+@inject DialogService DialogService
+@inject NavigationManager Navigation
+@implements IAsyncDisposable
+
+<RadzenStack Gap="1rem">
+    <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" JustifyContent="JustifyContent.SpaceBetween">
+        <RadzenText TextStyle="TextStyle.H4" class="rz-m-0">Tasks</RadzenText>
+        <RadzenButton Icon="add" Text="New Task" Click="@OnNewTask" Disabled="@(ProjectContext.SelectedProject == null)" />
+    </RadzenStack>
+
+    @if (ProjectContext.SelectedProject == null)
+    {
+        <RadzenAlert AlertStyle="AlertStyle.Info">Please select a project to view tasks.</RadzenAlert>
+    }
+    else
+    {
+        <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="1rem" Class="rz-mb-4">
+            <RadzenLabel Text="Status:" Style="margin-right: 0.5rem;" />
+            <RadzenDropDown TValue="IEnumerable<TaskItemStatus>" @bind-Value="selectedStatuses" Data="@allStatuses" 
+                            Multiple="true" Chips="true" AllowClear="true" Placeholder="Select statuses..."
+                            Change="@(args => LoadTasks())" Style="width: 500px;" H PopupStyle="max-height: 300px; overflow-y: auto;" />
+        </RadzenStack>
+
+        <RadzenDataGrid @ref="grid" Data="@tasks" TItem="TaskItemSummaryDto" 
+                        AllowPaging="true" PageSize="20" AllowSorting="true"
+                        RowSelect="@OnRowSelect" class="rz-shadow-2">
+            <Columns>
+                <RadzenDataGridColumn TItem="TaskItemSummaryDto" Property="Id" Title="ID" Width="100px">
+                    <Template Context="t">
+                        @t.Id.ToString()[..8]
+                    </Template>
+                </RadzenDataGridColumn>
+                <RadzenDataGridColumn TItem="TaskItemSummaryDto" Property="Title" Title="Title" />
+                <RadzenDataGridColumn TItem="TaskItemSummaryDto" Property="Status" Title="Status" Width="150px">
+                    <Template Context="t">
+                        <RadzenBadge BadgeStyle="@GetStatusStyle(t.Status)" Text="@t.Status.ToString()" />
+                    </Template>
+                </RadzenDataGridColumn>
+                <RadzenDataGridColumn TItem="TaskItemSummaryDto" Property="Priority" Title="Priority" Width="120px">
+                    <Template Context="t">
+                        <RadzenBadge BadgeStyle="@GetPriorityStyle(t.Priority)" Text="@t.Priority.ToString()" />
+                    </Template>
+                </RadzenDataGridColumn>
+                <RadzenDataGridColumn TItem="TaskItemSummaryDto" Property="AssignedToDisplayName" Title="Assigned To" Width="150px">
+                    <Template Context="t">
+                        @(t.AssignedToDisplayName ?? "Unassigned")
+                    </Template>
+                </RadzenDataGridColumn>
+                <RadzenDataGridColumn TItem="TaskItemSummaryDto" Property="UpdatedAt" Title="Updated" Width="180px">
+                    <Template Context="t">
+                        @t.UpdatedAt.ToLocalTime().ToString("g")
+                    </Template>
+                </RadzenDataGridColumn>
+            </Columns>
+        </RadzenDataGrid>
+    }
+</RadzenStack>
+
+@code {
+    private RadzenDataGrid<TaskItemSummaryDto>? grid;
+    private List<TaskItemSummaryDto> tasks = new();
+    private HubConnection? hubConnection;
+    private Guid currentUserId;
+    private IEnumerable<TaskItemStatus> allStatuses = Enum.GetValues<TaskItemStatus>();
+    private IEnumerable<TaskItemStatus> selectedStatuses = new List<TaskItemStatus> { TaskItemStatus.Open, TaskItemStatus.InProgress };
+
+    [CascadingParameter]
+    private Task<AuthenticationState> authenticationStateTask { get; set; } = default!;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await authenticationStateTask;
+        if (authState.User.Identity?.IsAuthenticated == true)
+        {
+            currentUserId = Guid.Parse(authState.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)!.Value);
+        }
+
+        ProjectContext.OnProjectChanged += RefreshData;
+        await LoadTasks();
+
+        hubConnection = new HubConnectionBuilder()
+            .WithUrl(Navigation.ToAbsoluteUri("/hubs/tasks"))
+            .Build();
+
+        hubConnection.On<Guid>("TaskCreated", async (id) => await LoadTasks());
+        hubConnection.On<Guid>("TaskUpdated", async (id) => await LoadTasks());
+        hubConnection.On<Guid, Guid>("TaskClaimed", async (tid, uid) => await LoadTasks());
+        hubConnection.On<Guid>("TaskReleased", async (id) => await LoadTasks());
+        hubConnection.On<Guid>("NoteAdded", async (id) => await LoadTasks());
+
+        await hubConnection.StartAsync();
+        if (ProjectContext.SelectedProject != null)
+        {
+            await hubConnection.InvokeAsync("JoinProject", ProjectContext.SelectedProject.Id.ToString());
+        }
+    }
+
+    private async void RefreshData()
+    {
+        await InvokeAsync(async () =>
+        {
+            if (hubConnection?.State == HubConnectionState.Connected && ProjectContext.SelectedProject != null)
+            {
+                await hubConnection.InvokeAsync("JoinProject", ProjectContext.SelectedProject.Id.ToString());
+            }
+            await LoadTasks();
+            StateHasChanged();
+        });
+    }
+
+    private async Task LoadTasks()
+    {
+        if (ProjectContext.SelectedProject != null)
+        {
+            var response = await TaskService.GetTasksAsync(ProjectContext.SelectedProject.Id, selectedStatuses, null, null, currentUserId, 1, 100);
+            tasks = response.Items;
+        }
+    }
+
+    private async Task OnRowSelect(TaskItemSummaryDto t)
+    {
+        var result = await DialogService.OpenAsync<TaskDetailDialog>($"Task Details: {t.Id.ToString()[..8]}",
+            new Dictionary<string, object> { { "TaskId", t.Id } },
+            new DialogOptions { Width = "800px", Height = "700px" });
+
+        if (result == true)
+        {
+            await LoadTasks();
+        }
+    }
+
+    private async Task OnNewTask()
+    {
+        var newTask = new CreateTaskRequest { Title = "New Task" };
+        var result = await DialogService.OpenAsync("Create New Task", ds =>
+            @<RadzenStack Gap="1rem">
+                <RadzenFormField Text="Title">
+                    <RadzenTextBox @bind-Value="newTask.Title" />
+                </RadzenFormField>
+                <RadzenFormField Text="Priority">
+                    <RadzenDropDown TValue="TaskPriority" Data="@(Enum.GetValues<TaskPriority>())" @bind-Value="newTask.Priority" />
+                </RadzenFormField>
+                <RadzenStack Orientation="Orientation.Horizontal" JustifyContent="JustifyContent.End" Gap="1rem">
+                    <RadzenButton Text="Cancel" Click="@(() => ds.Close(false))" ButtonStyle="ButtonStyle.Light" />
+                    <RadzenButton Text="Create" Click="@(() => ds.Close(true))" ButtonStyle="ButtonStyle.Primary" />
+                </RadzenStack>
+            </RadzenStack>
+        );
+
+        var selectedProject = ProjectContext.SelectedProject;
+        if (result == true && selectedProject != null)
+        {
+            await TaskService.CreateTaskAsync(selectedProject.Id, newTask, currentUserId);
+            await LoadTasks();
+        }
+    }
+
+    private BadgeStyle GetStatusStyle(TaskItemStatus status) => status switch
+    {
+        TaskItemStatus.Open => BadgeStyle.Info,
+        TaskItemStatus.InProgress => BadgeStyle.Warning,
+        TaskItemStatus.Completed => BadgeStyle.Success,
+        TaskItemStatus.Blocked => BadgeStyle.Danger,
+        TaskItemStatus.Cancelled => BadgeStyle.Light,
+        _ => BadgeStyle.Secondary
+    };
+
+    private BadgeStyle GetPriorityStyle(TaskPriority priority) => priority switch
+    {
+        TaskPriority.Critical => BadgeStyle.Danger,
+        TaskPriority.High => BadgeStyle.Warning,
+        TaskPriority.Medium => BadgeStyle.Info,
+        TaskPriority.Low => BadgeStyle.Success,
+        _ => BadgeStyle.Secondary
+    };
+
+    public async ValueTask DisposeAsync()
+    {
+        ProjectContext.OnProjectChanged -= RefreshData;
+        if (hubConnection is not null)
+        {
+            await hubConnection.DisposeAsync();
+        }
+    }
+}
