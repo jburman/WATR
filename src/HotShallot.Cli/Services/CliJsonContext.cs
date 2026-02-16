@@ -5,6 +5,7 @@ namespace HotShallot.Cli.Json;
 
 [JsonSerializable(typeof(ConfigData))]
 [JsonSerializable(typeof(Tokens))]
+[JsonSerializable(typeof(LocalProjectSettings))]
 public partial class CliJsonContext : JsonSerializerContext
 {
 }

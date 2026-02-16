@@ -29,7 +29,8 @@
                             Change="@(args => LoadTasks())" Style="width: 500px;" MaxHeight="400px" />
         </RadzenStack>
 
-        <RadzenDataGrid @ref="grid" Data="@tasks" TItem="TaskItemSummaryDto" 
+        <RadzenDataGrid @ref="grid" Data="@tasks" TItem="TaskItemSummaryDto" KeyProperty="Id"
+                        RowExpand="@OnRowExpand" RowCollapse="@OnRowCollapse"
                         AllowPaging="true" PageSize="20" AllowSorting="true"
                         RowSelect="@OnRowSelect" class="rz-shadow-2">
             <Template Context="t">
@@ -73,6 +74,7 @@
     private List<TaskItemSummaryDto> tasks = new();
     private HubConnection? hubConnection;
     private Guid currentUserId;
+    private readonly HashSet<Guid> expandedTaskIds = new();
     private IEnumerable<TaskItemStatus> allStatuses = Enum.GetValues<TaskItemStatus>();
     private IEnumerable<TaskItemStatus> selectedStatuses = new List<TaskItemStatus> { TaskItemStatus.Open, TaskItemStatus.InProgress };
 
@@ -134,12 +136,17 @@
         InvokeAsync(async () =>
         {
             await LoadTasks();
-            if (grid is not null)
+            expandedTaskIds.IntersectWith(tasks.Select(t => t.Id));
+            if (grid is not null && expandedTaskIds.Count > 0)
             {
-                await grid.Reload();
+                await grid.ExpandRows(tasks.Where(t => expandedTaskIds.Contains(t.Id)));
             }
             StateHasChanged();
         });
+
+    private void OnRowExpand(TaskItemSummaryDto task) => expandedTaskIds.Add(task.Id);
+
+    private void OnRowCollapse(TaskItemSummaryDto task) => expandedTaskIds.Remove(task.Id);
 
     private async Task OnRowSelect(TaskItemSummaryDto t)
     {

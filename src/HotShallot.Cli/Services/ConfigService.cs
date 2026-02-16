@@ -33,10 +33,52 @@ public class ConfigService
         var json = JsonSerializer.Serialize(data, CliJsonContext.Default.ConfigData);
         File.WriteAllText(_configPath, json);
     }
+
+    public string? GetLocalProjectName()
+    {
+        var dir = new DirectoryInfo(Directory.GetCurrentDirectory());
+        while (dir != null)
+        {
+            var settingsPath = Path.Combine(dir.FullName, ".shallot", "settings.json");
+            if (File.Exists(settingsPath))
+            {
+                try
+                {
+                    var json = File.ReadAllText(settingsPath);
+                    var settings = JsonSerializer.Deserialize(json, CliJsonContext.Default.LocalProjectSettings);
+                    if (!string.IsNullOrWhiteSpace(settings?.ProjectName))
+                    {
+                        return settings.ProjectName;
+                    }
+                }
+                catch
+                {
+                    // Ignore errors reading local settings
+                }
+            }
+            dir = dir.Parent;
+        }
+        return null;
+    }
+
+    public void SaveLocalProjectName(string projectName)
+    {
+        var dir = Path.Combine(Directory.GetCurrentDirectory(), ".shallot");
+        if (!Directory.Exists(dir)) Directory.CreateDirectory(dir);
+
+        var settings = new LocalProjectSettings { ProjectName = projectName };
+        var json = JsonSerializer.Serialize(settings, CliJsonContext.Default.LocalProjectSettings);
+        File.WriteAllText(Path.Combine(dir, "settings.json"), json);
+    }
 }
 
 public class ConfigData
 {
     public string ServerUrl { get; set; } = string.Empty;
-    public string? DefaultProject { get; set; }
+    public string? DefaultProject { get; set; } // Deprecated, kept for backward compat if needed
+}
+
+public class LocalProjectSettings
+{
+    public string ProjectName { get; set; } = string.Empty;
 }

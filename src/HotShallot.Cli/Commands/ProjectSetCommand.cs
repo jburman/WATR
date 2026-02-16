@@ -36,11 +36,9 @@ public class ProjectSetCommand : AsyncCommand<ProjectSetCommand.Settings>
             return 3;
         }
 
-        var configData = _config.Load();
-        configData.DefaultProject = project.Name;
-        _config.Save(configData);
+        _config.SaveLocalProjectName(project.Name);
 
-        AnsiConsole.MarkupLine($"[green]✅ Default project set to: {project.Name}[/]");
+        AnsiConsole.MarkupLine($"[green]✅ Linked current directory to project: {project.Name}[/]");
         return 0;
     }
 }

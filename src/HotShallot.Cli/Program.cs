@@ -11,6 +11,7 @@ var services = new ServiceCollection();
 services.AddSingleton<ConfigService>();
 services.AddSingleton<TokenStore>();
 services.AddSingleton<ApiClient>();
+services.AddSingleton<ProjectContextHelper>();
 
 var registrar = new TypeRegistrar(services);
 

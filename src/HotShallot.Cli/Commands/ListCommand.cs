@@ -12,11 +12,13 @@ public class ListCommand : AsyncCommand<ListCommand.Settings>
 {
     private readonly ApiClient _api;
     private readonly ConfigService _config;
+    private readonly ProjectContextHelper _projectContext;
 
-    public ListCommand(ApiClient api, ConfigService config)
+    public ListCommand(ApiClient api, ConfigService config, ProjectContextHelper projectContext)
     {
         _api = api;
         _config = config;
+        _projectContext = projectContext;
     }
 
     public class Settings : CommandSettings
@@ -33,12 +35,10 @@ public class ListCommand : AsyncCommand<ListCommand.Settings>
 
     public override async Task<int> ExecuteAsync(CommandContext context, Settings settings, CancellationToken cancellationToken)
     {
-        var configData = _config.Load();
-        var projectName = settings.ProjectName ?? configData.DefaultProject;
+        var projectName = await _projectContext.GetOrPromptProjectAsync(settings.ProjectName, cancellationToken);
 
         if (string.IsNullOrEmpty(projectName))
         {
-            AnsiConsole.MarkupLine("[red]Error: No project specified. Use --project or set a default project.[/]");
             return 1;
         }
 

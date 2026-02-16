@@ -24,6 +24,7 @@ public class StatusCommand : AsyncCommand<StatusCommand.Settings>
         {
             var user = await _api.GetAsync<UserDto>("api/v1/user/me");
             var config = _config.Load();
+            var localProject = _config.GetLocalProjectName();
 
             var grid = new Grid();
             grid.AddColumn(new GridColumn().NoWrap().PadRight(2));
@@ -31,7 +32,7 @@ public class StatusCommand : AsyncCommand<StatusCommand.Settings>
 
             grid.AddRow("[grey]Server:[/]", config.ServerUrl);
             grid.AddRow("[grey]User:[/]", $"{user.DisplayName} ({user.Email})");
-            grid.AddRow("[grey]Default Project:[/]", config.DefaultProject ?? "[yellow]Not Set[/]");
+            grid.AddRow("[grey]Local Project:[/]", localProject ?? "[yellow]Not Set (in this dir)[/]");
 
             AnsiConsole.Write(new Panel(grid).Header("HotShallot Status").BorderColor(Color.Orange1));
             return 0;
