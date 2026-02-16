@@ -16,9 +16,9 @@
         <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" JustifyContent="JustifyContent.SpaceBetween">
             <RadzenTextBox @bind-Value="task.Title" Style="width: 70%; font-size: 1.5rem;" />
             <RadzenStack Orientation="Orientation.Horizontal" Gap="0.5rem">
-                @if (members != null)
+                @if (assigneeOptions != null)
                 {
-                    <RadzenAutoComplete Data="@members" TextProperty="DisplayName" @bind-Value="assigneeName" Placeholder="Assigned To" Style="width: 200px;" />
+                    <RadzenAutoComplete Data="@assigneeOptions" @bind-Value="assigneeName" Placeholder="Assigned To" Style="width: 200px;" FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive" />
                 }
                 @if (ProjectContext.SelectedProject?.TaskTypes?.Any() == true)
                 {
@@ -93,6 +93,7 @@
 
     private TaskItemDto? task;
     private List<ProjectMemberDto>? members;
+    private List<string>? assigneeOptions;
     private string newNoteContent = "";
     private string? assigneeName = "";
     private Guid currentUserId;
@@ -108,11 +109,17 @@
             assigneeName = task.AssignedToDisplayName ?? task.AssignedToName;
             try
             {
-                members = await ProjectService.GetProjectMembersAsync(task.ProjectId, currentUserId);
+                var membersTask = ProjectService.GetProjectMembersAsync(task.ProjectId, currentUserId);
+                var assigneesTask = ProjectService.GetProjectAssigneesAsync(task.ProjectId, currentUserId);
+                
+                await Task.WhenAll(membersTask, assigneesTask);
+                
+                members = membersTask.Result;
+                assigneeOptions = assigneesTask.Result;
             }
             catch (Exception ex)
             {
-                NotificationService.Notify(NotificationSeverity.Error, "Error", $"Failed to load members: {ex.Message}");
+                NotificationService.Notify(NotificationSeverity.Error, "Error", $"Failed to load assignment data: {ex.Message}");
             }
         }
     }

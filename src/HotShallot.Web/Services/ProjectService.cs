@@ -213,4 +213,32 @@ public class ProjectService
             })
             .ToListAsync();
     }
+
+    public async Task<List<string>> GetProjectAssigneesAsync(Guid projectId, Guid userId)
+    {
+        using var db = await _dbFactory.CreateDbContextAsync();
+        
+        // Verify user is a member
+        var isMember = await db.ProjectMembers.AnyAsync(m => m.ProjectId == projectId && m.UserId == userId);
+        if (!isMember) throw new UnauthorizedAccessException("User is not a member of this project.");
+
+        var assignees = await db.TaskItems
+            .Where(t => t.ProjectId == projectId && t.AssignedToName != null && t.AssignedToName != "")
+            .Select(t => t.AssignedToName!)
+            .Distinct()
+            .ToListAsync();
+
+        var memberNames = await db.ProjectMembers
+            .Where(m => m.ProjectId == projectId)
+            .Select(m => m.User.DisplayName)
+            .Distinct()
+            .ToListAsync();
+
+        return assignees
+            .Concat(memberNames)
+            .Where(n => !string.IsNullOrWhiteSpace(n))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(n => n)
+            .ToList();
+    }
 }

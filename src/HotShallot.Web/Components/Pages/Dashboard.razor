@@ -42,7 +42,6 @@
                     </Template>
                 </RadzenDataGridColumn>
                 <RadzenDataGridColumn TItem="TaskItemSummaryDto" Property="Title" Title="Title" />
-                <RadzenDataGridColumn TItem="TaskItemSummaryDto" Property="TaskType" Title="Type" Width="100px" />
                 <RadzenDataGridColumn TItem="TaskItemSummaryDto" Property="Status" Title="Status" Width="150px">
                     <Template Context="t">
                         <RadzenBadge BadgeStyle="@GetStatusStyle(t.Status)" Text="@t.Status.ToString()" />
@@ -134,7 +133,7 @@
     {
         var result = await DialogService.OpenAsync<TaskDetailDialog>($"Task Details: {t.Id.ToString()[..8]}",
             new Dictionary<string, object> { { "TaskId", t.Id } },
-            new DialogOptions { Width = "800px", Height = "80vh" });
+            new DialogOptions { Width = "80vw", Height = "80vh" });
 
         if (result == true)
         {
