@@ -74,6 +74,13 @@ For complex requirements, use the task body. You can reference files directly to
 **Best Practice for Epics:**
 In the body of an Epic, maintain a checklist of sub-tasks referencing their Handles or IDs.
 
+### Body vs. Notes: The Golden Rule
+*   **BODY:** Use `shallot update <ID> --body ...` for the **Definition of Done**. This includes requirements, acceptance criteria, implementation plans, and checklists. This is the "What" and "How".
+*   **NOTES:** Use `shallot note <ID> ...` for the **Activity Log**. This includes daily progress, blockers, decision records, and final verification. This is the "Status".
+
+**❌ BAD:** Putting the implementation plan in a Note.
+**✅ GOOD:** Putting the implementation plan in the Body via `shallot update`.
+
 ## 3. Workflow Lifecycle
 
 ### Claiming Work
@@ -82,6 +89,15 @@ When you start working on a task:
 shallot claim <ID>
 ```
 This assigns the task to you.
+
+### Refining the Plan
+Before writing code, update the task **Body** with your detailed technical plan.
+```bash
+# Write plan to file
+echo "## Plan`n- [ ] Create Interface`n- [ ] Implement Class" > plan.md
+# Update Body
+shallot update <ID> --body @plan.md
+```
 
 ### Updating Status
 Move tasks through their lifecycle:
