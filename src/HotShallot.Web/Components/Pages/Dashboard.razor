@@ -41,6 +41,7 @@
                         @t.Id.ToString()[..8]
                     </Template>
                 </RadzenDataGridColumn>
+                <RadzenDataGridColumn TItem="TaskItemSummaryDto" Property="TaskHandle" Title="Handle" Width="120px" />
                 <RadzenDataGridColumn TItem="TaskItemSummaryDto" Property="Title" Title="Title" />
                 <RadzenDataGridColumn TItem="TaskItemSummaryDto" Property="Status" Title="Status" Width="150px">
                     <Template Context="t">
@@ -131,7 +132,13 @@
 
     private async Task OnRowSelect(TaskItemSummaryDto t)
     {
-        var result = await DialogService.OpenAsync<TaskDetailDialog>($"Task Details: {t.Id.ToString()[..8]}",
+        var title = $"Task Details: {t.Id.ToString()[..8]}";
+        if (!string.IsNullOrEmpty(t.TaskHandle))
+        {
+            title += $" ({t.TaskHandle})";
+        }
+
+        var result = await DialogService.OpenAsync<TaskDetailDialog>(title,
             new Dictionary<string, object> { { "TaskId", t.Id } },
             new DialogOptions { Width = "80vw", Height = "80vh" });
 
@@ -149,6 +156,9 @@
                 <RadzenFormField Text="Title">
                     <RadzenTextBox @bind-Value="newTask.Title" />
                 </RadzenFormField>
+                <RadzenFormField Text="Handle (Required)">
+                    <RadzenTextBox @bind-Value="newTask.TaskHandle" Placeholder="e.g. login-page" />
+                </RadzenFormField>
                 <RadzenFormField Text="Priority">
                     <RadzenDropDown TValue="TaskPriority" Data="@(Enum.GetValues<TaskPriority>())" @bind-Value="newTask.Priority" />
                 </RadzenFormField>
@@ -160,7 +170,7 @@
                 }
                 <RadzenStack Orientation="Orientation.Horizontal" JustifyContent="JustifyContent.End" Gap="1rem">
                     <RadzenButton Text="Cancel" Click="@(() => ds.Close(false))" ButtonStyle="ButtonStyle.Light" />
-                    <RadzenButton Text="Create" Click="@(() => ds.Close(true))" ButtonStyle="ButtonStyle.Primary" />
+                    <RadzenButton Text="Create" Click="@(() => { if(!string.IsNullOrWhiteSpace(newTask.TaskHandle)) ds.Close(true); })" ButtonStyle="ButtonStyle.Primary" Disabled="@string.IsNullOrWhiteSpace(newTask.TaskHandle)" />
                 </RadzenStack>
             </RadzenStack>
         );

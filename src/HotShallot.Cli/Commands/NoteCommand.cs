@@ -25,9 +25,19 @@ public class NoteCommand : AsyncCommand<NoteCommand.Settings>
 
     public override async Task<int> ExecuteAsync(CommandContext context, Settings settings, CancellationToken cancellationToken)
     {
+        var message = settings.Message;
+        if (message.StartsWith("@"))
+        {
+            var path = message[1..];
+            if (File.Exists(path))
+            {
+                message = await File.ReadAllTextAsync(path, cancellationToken);
+            }
+        }
+
         try
         {
-            await _api.PostAsync($"api/v1/tasks/{settings.Id}/notes", new CreateTaskNoteRequest { Content = settings.Message });
+            await _api.PostAsync($"api/v1/tasks/{settings.Id}/notes", new CreateTaskNoteRequest { Content = message });
             AnsiConsole.MarkupLine($"[green]✅ Note added to task {settings.Id}[/]");
             return 0;
         }

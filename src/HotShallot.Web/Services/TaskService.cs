@@ -114,12 +114,20 @@ public class TaskService
 
                 var nextNumber = maxNumber + 1;
 
+                // Handle TaskHandle logic
+                var handle = request.TaskHandle.Trim().ToLowerInvariant();
+                if (!handle.StartsWith($"{nextNumber}-"))
+                {
+                    handle = $"{nextNumber}-{handle}";
+                }
+
                 var task = new TaskItem
                 {
                     Id = Guid.CreateVersion7(),
                     ProjectId = projectId,
                     Title = request.Title,
                     Body = request.Body,
+                    TaskHandle = handle,
                     TaskType = request.TaskType,
                     Priority = request.Priority,
                     Status = TaskItemStatus.Open,

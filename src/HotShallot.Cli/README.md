@@ -103,9 +103,13 @@ shallot done <TASK_ID>
 ```
 
 ### Add Note
-Append a comment or update to a task.
+Append a comment or update to a task. Notes support **Markdown**.
 ```bash
 shallot note <TASK_ID> "Started working on the backend API."
+```
+To load a note from a file (useful for long logs):
+```bash
+shallot note <TASK_ID> @log.txt
 ```
 
 ## Examples

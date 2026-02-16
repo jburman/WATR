@@ -131,6 +131,7 @@ Create each entity class in a `Models/` folder inside `HotShallot.Shared`. Each 
   > **Note:** Named `TaskItem` to avoid conflict with `System.Threading.Tasks.Task`.
 
 - [ ] Create `Models/TaskNote.cs` with properties: `Id` (Guid), `TaskId` (Guid), `AuthorUserId` (Guid), `Content` (string), `CreatedAt` (DateTime), `UpdatedAt` (DateTime?). Add navigation properties: `TaskItem Task`, `User Author`.
+  > **Note:** `Content` stores Markdown text.
 
 ### 1.5 Create the DbContext (in HotShallot.Web)
 

@@ -42,24 +42,20 @@ shallot list --status Open
     ```
 
 ### Creating Tasks & Epics
-Create tasks with clear titles and priorities.
+Create tasks with clear titles, priorities, and a short handle.
 
 **Standard Task:**
 ```bash
-shallot add "Implement Login Page" --priority High
+shallot add "Implement Login Page" --handle "login-ui" --priority High
 ```
+*Note: The server will automatically prefix the handle with the task number (e.g., `42-login-ui`).*
 
 **Epic (Large Feature):**
 1.  Create the high-level Epic.
     ```bash
-    shallot add "Authentication System" --type Epic --priority Critical
+    shallot add "Authentication System" --handle "auth-epic" --type Epic --priority Critical
     ```
-2.  **Capture the ID and Task Number** returned in the output or via `shallot list`.
-3.  **Set a Handle:** Give it a human-readable identifier prefixed with the Task Number.
-    *   *Format:* `{TaskNumber}-{ShortDescription}` (e.g., `43-AUTH-EPIC`)
-    ```bash
-    shallot update <ID> --handle "43-AUTH-EPIC"
-    ```
+2.  **Capture the ID** returned in the output.
 
 ### Adding Details (Markdown)
 For complex requirements, use the task body. You can reference files directly to avoid shell escaping issues.
@@ -106,9 +102,13 @@ shallot update <ID> --status InProgress
 ```
 
 ### Adding Notes
-Keep a log of your progress, decisions, and technical details.
+Keep a log of your progress, decisions, and technical details. **Notes support Markdown.**
 ```bash
 shallot note <ID> "Started implementation. Using JWT for token management."
+```
+For longer notes, use a file:
+```bash
+shallot note <ID> @progress.md
 ```
 
 ### Completion

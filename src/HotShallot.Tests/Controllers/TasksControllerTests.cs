@@ -20,6 +20,7 @@ public class TasksControllerTests : ControllerTestBase
         var request = new CreateTaskRequest
         {
             Title = "New Task",
+            TaskHandle = "new-task",
             Body = "This is a test task",
             Priority = TaskPriority.High
         };
@@ -31,6 +32,8 @@ public class TasksControllerTests : ControllerTestBase
         
         Assert.NotNull(task);
         Assert.Equal(request.Title, task.Title);
+        // Verify handle prefix logic
+        Assert.Equal($"{task.TaskNumber}-new-task", task.TaskHandle);
         Assert.Equal(TaskItemStatus.Open, task.Status);
         Assert.Equal(project.Id, task.ProjectId);
         Assert.Equal(user.Id, task.CreatedByUserId);
@@ -43,7 +46,7 @@ public class TasksControllerTests : ControllerTestBase
         var project = await CreateProjectAsync(user.Id);
 
         // Create a task
-        var createRequest = new CreateTaskRequest { Title = "Task 1" };
+        var createRequest = new CreateTaskRequest { Title = "Task 1", TaskHandle = "task-1" };
         await _client.PostAsJsonAsync($"api/v1/projects/{project.Id}/tasks", createRequest);
 
         var response = await _client.GetAsync($"api/v1/projects/{project.Id}/tasks");
@@ -62,7 +65,7 @@ public class TasksControllerTests : ControllerTestBase
         var project = await CreateProjectAsync(user.Id);
 
         // Create task
-        var createRes = await _client.PostAsJsonAsync($"api/v1/projects/{project.Id}/tasks", new CreateTaskRequest { Title = "To Update" });
+        var createRes = await _client.PostAsJsonAsync($"api/v1/projects/{project.Id}/tasks", new CreateTaskRequest { Title = "To Update", TaskHandle = "update-me" });
         var task = await createRes.Content.ReadFromJsonAsync<TaskItemDto>();
 
         // Patch
@@ -84,7 +87,7 @@ public class TasksControllerTests : ControllerTestBase
         var project = await CreateProjectAsync(user.Id);
 
         // Create task
-        var createRes = await _client.PostAsJsonAsync($"api/v1/projects/{project.Id}/tasks", new CreateTaskRequest { Title = "To Claim" });
+        var createRes = await _client.PostAsJsonAsync($"api/v1/projects/{project.Id}/tasks", new CreateTaskRequest { Title = "To Claim", TaskHandle = "claim-me" });
         var task = await createRes.Content.ReadFromJsonAsync<TaskItemDto>();
 
         // Claim
@@ -104,7 +107,7 @@ public class TasksControllerTests : ControllerTestBase
         var project = await CreateProjectAsync(user.Id);
 
         // Create task
-        var createRes = await _client.PostAsJsonAsync($"api/v1/projects/{project.Id}/tasks", new CreateTaskRequest { Title = "With Note" });
+        var createRes = await _client.PostAsJsonAsync($"api/v1/projects/{project.Id}/tasks", new CreateTaskRequest { Title = "With Note", TaskHandle = "note-me" });
         var task = await createRes.Content.ReadFromJsonAsync<TaskItemDto>();
 
         // Add note

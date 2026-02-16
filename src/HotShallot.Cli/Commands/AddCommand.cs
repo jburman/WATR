@@ -22,6 +22,9 @@ public class AddCommand : AsyncCommand<AddCommand.Settings>
         [CommandArgument(0, "<TITLE>")]
         public string Title { get; set; } = string.Empty;
 
+        [CommandOption("-h|--handle <HANDLE>")]
+        public string Handle { get; set; } = string.Empty;
+
         [CommandOption("-b|--body <BODY>")]
         public string? Body { get; set; }
 
@@ -37,6 +40,12 @@ public class AddCommand : AsyncCommand<AddCommand.Settings>
 
     public override async Task<int> ExecuteAsync(CommandContext context, Settings settings, CancellationToken cancellationToken)
     {
+        if (string.IsNullOrWhiteSpace(settings.Handle))
+        {
+            AnsiConsole.MarkupLine("[red]Error: Task handle is required (--handle).[/]");
+            return 1;
+        }
+
         var configData = _config.Load();
         var projectName = settings.ProjectName ?? configData.DefaultProject;
 
@@ -65,6 +74,7 @@ public class AddCommand : AsyncCommand<AddCommand.Settings>
         var request = new CreateTaskRequest
         {
             Title = settings.Title,
+            TaskHandle = settings.Handle,
             Body = body,
             Priority = settings.Priority,
             TaskType = settings.TaskType

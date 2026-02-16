@@ -257,8 +257,10 @@ Since Blazor Server already maintains a persistent SignalR connection to the ser
 *   `shallot status`: Shows logged-in user, current project context, and summary counts (open/in-progress/blocked tasks).
 *   `shallot list --project <name> --status <filter>`: Key-value table of tasks. Supports `--json` flag.
 *   `shallot show <id>`: Renders task details (renders Markdown to ANSI if possible). Supports `--json` flag.
-*   `shallot add "Title" --body "Inline text" --project <name>`: Creates a task. Body supports:
-    *   `--body "Inline markdown text"` for literal content.
+*   `shallot add "Title" --handle "short-name" --body "Inline text" --project <name>`: Creates a task.
+    *   `--handle` is REQUIRED. It should be a short, lowercase identifier (e.g., `login-page`). The server will automatically prefix it with the task number (e.g., `42-login-page`).
+    *   Body supports:
+        *   `--body "Inline markdown text"` for literal content.
     *   `--body @file.md` to read from a file (RECOMMENDED for complex markdown to avoid shell escaping issues).
     *   `--body -` to read from stdin (for piping).
 *   `shallot update <id> [--status <status>] [--title "New Title"] [--body "text"] [--priority <level>]`: General-purpose update command for changing any task field. Supports file-based body updates via `@file.md`.

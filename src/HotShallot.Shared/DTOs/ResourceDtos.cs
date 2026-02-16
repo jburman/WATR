@@ -65,6 +65,7 @@ public class TaskItemSummaryDto
 public class CreateTaskRequest
 {
     public string Title { get; set; } = string.Empty;
+    public string TaskHandle { get; set; } = string.Empty;
     public string Body { get; set; } = string.Empty;
     public string? TaskType { get; set; }
     public TaskPriority Priority { get; set; } = TaskPriority.None;
