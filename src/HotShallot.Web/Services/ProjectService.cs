@@ -181,6 +181,18 @@ public class ProjectService
         db.Projects.Add(project);
         await db.SaveChangesAsync();
 
+        return new ProjectDto
+        {
+            Id = project.Id,
+            Name = project.Name,
+            Description = project.Description,
+            CreatedByUserId = project.CreatedByUserId,
+            CreatedAt = project.CreatedAt,
+            UpdatedAt = project.UpdatedAt,
+            TaskTypes = project.TaskTypes
+        };
+    }
+
     public async Task<List<ProjectMemberDto>> GetProjectMembersAsync(Guid projectId, Guid userId)
     {
         using var db = await _dbFactory.CreateDbContextAsync();
