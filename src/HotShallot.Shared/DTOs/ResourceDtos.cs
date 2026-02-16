@@ -39,6 +39,7 @@ public class TaskItemDto
     public TaskItemStatus Status { get; set; }
     public TaskPriority Priority { get; set; }
     public Guid? AssignedToUserId { get; set; }
+    public string? AssignedToName { get; set; }
     public string? AssignedToDisplayName { get; set; }
     public Guid CreatedByUserId { get; set; }
     public string CreatedByDisplayName { get; set; } = string.Empty;
@@ -78,6 +79,7 @@ public class UpdateTaskRequest
     public TaskItemStatus Status { get; set; }
     public TaskPriority Priority { get; set; }
     public Guid? AssignedToUserId { get; set; }
+    public string? AssignedToName { get; set; }
 }
 
 public class ProjectMemberDto

@@ -79,6 +79,9 @@ namespace HotShallot.Web.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("AssignedToName")
+                        .HasColumnType("TEXT");
+
                     b.Property<Guid?>("AssignedToUserId")
                         .HasColumnType("TEXT");
 

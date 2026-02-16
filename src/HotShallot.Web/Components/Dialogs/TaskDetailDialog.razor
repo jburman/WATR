@@ -18,7 +18,7 @@
             <RadzenStack Orientation="Orientation.Horizontal" Gap="0.5rem">
                 @if (members != null)
                 {
-                    <RadzenDropDown TValue="Guid?" Data="@members" TextProperty="DisplayName" ValueProperty="UserId" @bind-Value="task.AssignedToUserId" Placeholder="Unassigned" AllowClear="true" Style="width: 150px;" />
+                    <RadzenAutoComplete Data="@members" TextProperty="DisplayName" @bind-Value="assigneeName" Placeholder="Assigned To" Style="width: 200px;" />
                 }
                 @if (ProjectContext.SelectedProject?.TaskTypes?.Any() == true)
                 {
@@ -94,6 +94,7 @@
     private TaskItemDto? task;
     private List<ProjectMemberDto>? members;
     private string newNoteContent = "";
+    private string? assigneeName = "";
     private Guid currentUserId;
 
     protected override async Task OnInitializedAsync()
@@ -104,6 +105,7 @@
         task = await TaskService.GetTaskAsync(TaskId, currentUserId);
         if (task != null)
         {
+            assigneeName = task.AssignedToDisplayName ?? task.AssignedToName;
             try
             {
                 members = await ProjectService.GetProjectMembersAsync(task.ProjectId, currentUserId);
@@ -119,6 +121,16 @@
     {
         if (task == null) return;
 
+        Guid? userId = null;
+        if (!string.IsNullOrWhiteSpace(assigneeName))
+        {
+            var matchedMember = members?.FirstOrDefault(m => m.DisplayName.Equals(assigneeName, StringComparison.OrdinalIgnoreCase));
+            if (matchedMember != null)
+            {
+                userId = matchedMember.UserId;
+            }
+        }
+
         try
         {
             await TaskService.UpdateTaskAsync(task.Id, new UpdateTaskRequest
@@ -128,7 +140,8 @@
                 Status = task.Status,
                 Priority = task.Priority,
                 TaskType = task.TaskType,
-                AssignedToUserId = task.AssignedToUserId
+                AssignedToUserId = userId,
+                AssignedToName = assigneeName
             }, currentUserId);
             NotificationService.Notify(NotificationSeverity.Success, "Success", "Task updated");
             DialogService.Close(true);

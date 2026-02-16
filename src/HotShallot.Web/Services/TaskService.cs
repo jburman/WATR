@@ -57,7 +57,7 @@ public class TaskService
                 Title = t.Title,
                 Status = t.Status,
                 Priority = t.Priority,
-                AssignedToDisplayName = t.AssignedTo != null ? t.AssignedTo.DisplayName : null,
+                AssignedToDisplayName = t.AssignedTo != null ? t.AssignedTo.DisplayName : t.AssignedToName,
                 UpdatedAt = t.UpdatedAt
             })
             .ToListAsync();
@@ -166,9 +166,15 @@ public class TaskService
         task.TaskHandle = request.TaskHandle;
         task.TaskType = request.TaskType;
         
+        // Handle assignment logic
         if (request.AssignedToUserId != task.AssignedToUserId)
         {
             task.AssignedToUserId = request.AssignedToUserId;
+        }
+        
+        if (request.AssignedToName != task.AssignedToName)
+        {
+            task.AssignedToName = request.AssignedToName;
         }
 
         if (task.Status != request.Status)
@@ -322,7 +328,8 @@ public class TaskService
             Status = t.Status,
             Priority = t.Priority,
             AssignedToUserId = t.AssignedToUserId,
-            AssignedToDisplayName = t.AssignedTo?.DisplayName,
+            AssignedToName = t.AssignedToName,
+            AssignedToDisplayName = t.AssignedTo?.DisplayName ?? t.AssignedToName,
             CreatedByUserId = t.CreatedByUserId,
             CreatedByDisplayName = t.CreatedBy?.DisplayName ?? "Unknown",
             CreatedAt = t.CreatedAt,
