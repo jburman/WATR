@@ -46,7 +46,7 @@ Create tasks with clear titles, priorities, and a short handle.
 
 **Standard Task:**
 ```bash
-shallot add "Implement Login Page" --handle "login-ui" --priority High
+shallot add "Implement Login Page" --handle "login-ui" --type Task --priority High
 ```
 *Note: The server will automatically prefix the handle with the task number (e.g., `42-login-ui`).*
 

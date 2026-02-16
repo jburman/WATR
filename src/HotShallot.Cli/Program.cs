@@ -3,6 +3,9 @@ using Spectre.Console.Cli;
 using HotShallot.Cli.Services;
 using HotShallot.Cli.Commands;
 using System.Diagnostics.CodeAnalysis;
+using System.Text;
+
+Console.OutputEncoding = Encoding.UTF8;
 
 var services = new ServiceCollection();
 services.AddSingleton<ConfigService>();
