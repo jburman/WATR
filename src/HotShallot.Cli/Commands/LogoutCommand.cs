@@ -4,10 +4,14 @@ using HotShallot.Cli.Services;
 
 namespace HotShallot.Cli.Commands;
 
-public class LogoutCommand : AsyncCommand<CommandSettings>
+public class LogoutCommand : AsyncCommand<LogoutCommand.Settings>
 {
     private readonly TokenStore _tokenStore;
     private readonly ApiClient _api;
+
+    public class Settings : CommandSettings
+    {
+    }
 
     public LogoutCommand(TokenStore tokenStore, ApiClient api)
     {
@@ -15,7 +19,7 @@ public class LogoutCommand : AsyncCommand<CommandSettings>
         _api = api;
     }
 
-    public override async Task<int> ExecuteAsync(CommandContext context, CommandSettings settings, CancellationToken cancellationToken)
+    public override async Task<int> ExecuteAsync(CommandContext context, Settings settings, CancellationToken cancellationToken)
     {
         var tokens = _tokenStore.LoadTokens();
         if (tokens != null && !string.IsNullOrEmpty(tokens.RefreshToken))

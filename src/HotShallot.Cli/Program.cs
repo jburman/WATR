@@ -108,7 +108,34 @@ public sealed class TypeResolver : ITypeResolver, IDisposable
             return null;
         }
 
-        return _provider.GetService(type);
+        var service = _provider.GetService(type);
+        if (service != null)
+        {
+            return service;
+        }
+
+        // Fallback: Try to create concrete types (like Settings) that aren't registered
+        if (!type.IsInterface && !type.IsAbstract)
+        {
+            try
+            {
+                #pragma warning disable IL2067
+                return CreateInstance(type);
+                #pragma warning restore IL2067
+            }
+            catch
+            {
+                // Ignore and return null if creation fails
+            }
+        }
+
+        return null;
+    }
+
+    [UnconditionalSuppressMessage("Trimming", "IL2067:TargetParameterArgumentDoesNotSatisfyRequirement", Justification = "Spectre.Console.Cli settings types are typically simple POCOs or we accept the risk")]
+    private object CreateInstance([DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] Type type)
+    {
+        return ActivatorUtilities.CreateInstance(_provider, type);
     }
 
     public void Dispose()

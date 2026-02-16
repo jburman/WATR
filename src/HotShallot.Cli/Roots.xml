@@ -1,4 +1,3 @@
 <linker>
   <assembly fullname="shallot" preserve="all" />
-  <assembly fullname="HotShallot.Shared" preserve="all" />
 </linker>

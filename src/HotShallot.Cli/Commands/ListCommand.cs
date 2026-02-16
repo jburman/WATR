@@ -3,6 +3,8 @@ using Spectre.Console.Cli;
 using HotShallot.Cli.Services;
 using HotShallot.Shared.DTOs;
 using HotShallot.Shared.Enums;
+using HotShallot.Shared.Json;
+using System.Text.Json;
 
 namespace HotShallot.Cli.Commands;
 
@@ -24,6 +26,9 @@ public class ListCommand : AsyncCommand<ListCommand.Settings>
 
         [CommandOption("-s|--status <STATUS>")]
         public TaskItemStatus? Status { get; set; }
+
+        [CommandOption("--json")]
+        public bool Json { get; set; }
     }
 
     public override async Task<int> ExecuteAsync(CommandContext context, Settings settings, CancellationToken cancellationToken)
@@ -51,6 +56,13 @@ public class ListCommand : AsyncCommand<ListCommand.Settings>
         if (settings.Status.HasValue) path += $"?status={settings.Status.Value}";
 
         var response = await _api.GetAsync<PaginatedResponse<TaskItemSummaryDto>>(path);
+
+        if (settings.Json)
+        {
+            var json = JsonSerializer.Serialize(response.Items, AppJsonContext.Default.ListTaskItemSummaryDto);
+            AnsiConsole.Write(new Text(json));
+            return 0;
+        }
 
         var table = new Table();
         table.AddColumn("ID");

@@ -221,3 +221,4 @@ secrets.json
 # Other
 bin/
 obj/
+output/

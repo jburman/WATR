@@ -34,6 +34,12 @@ public class UpdateCommand : AsyncCommand<UpdateCommand.Settings>
         [CommandOption("--priority <PRIORITY>")]
         public TaskPriority? Priority { get; set; }
 
+        [CommandOption("--handle <HANDLE>")]
+        public string? TaskHandle { get; set; }
+
+        [CommandOption("--type <TYPE>")]
+        public string? TaskType { get; set; }
+
         [CommandOption("--json")]
         public bool Json { get; set; }
     }
@@ -45,7 +51,9 @@ public class UpdateCommand : AsyncCommand<UpdateCommand.Settings>
             Title = settings.Title,
             Body = settings.Body,
             Status = settings.Status,
-            Priority = settings.Priority
+            Priority = settings.Priority,
+            TaskHandle = settings.TaskHandle,
+            TaskType = settings.TaskType
         };
 
         try

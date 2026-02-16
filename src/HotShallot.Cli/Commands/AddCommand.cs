@@ -30,6 +30,9 @@ public class AddCommand : AsyncCommand<AddCommand.Settings>
 
         [CommandOption("--priority <PRIORITY>")]
         public TaskPriority Priority { get; set; } = TaskPriority.None;
+
+        [CommandOption("-t|--type <TYPE>")]
+        public string? TaskType { get; set; }
     }
 
     public override async Task<int> ExecuteAsync(CommandContext context, Settings settings, CancellationToken cancellationToken)
@@ -63,7 +66,8 @@ public class AddCommand : AsyncCommand<AddCommand.Settings>
         {
             Title = settings.Title,
             Body = body,
-            Priority = settings.Priority
+            Priority = settings.Priority,
+            TaskType = settings.TaskType
         };
 
         var task = await _api.PostAsync<TaskItemDto>($"api/v1/projects/{project.Id}/tasks", request);

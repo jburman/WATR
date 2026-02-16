@@ -17,7 +17,8 @@
                     </RadzenText>
                     
                     <RadzenFormField Text="Device Code" class="w-100 rz-mb-4">
-                        <RadzenTextBox @bind-Value="code" class="w-100 text-center" Style="font-size: 2rem; letter-spacing: 0.5rem;" Placeholder="XXXX-XXXX" />
+                        <RadzenTextBox @bind-Value="code" class="w-100 text-center" Style="font-size: 2rem; letter-spacing: 0.5rem;" 
+                                       Placeholder="XXXX-XXXX" @onkeyup="@HandleKeyUp" />
                     </RadzenFormField>
                     
                     <RadzenButton Text="Authorize" Click="@OnAuthorize" class="w-100" Busy="@isBusy" />
@@ -30,6 +31,14 @@
 @code {
     private string code = "";
     private bool isBusy = false;
+
+    async Task HandleKeyUp(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+        {
+            await OnAuthorize();
+        }
+    }
 
     async Task OnAuthorize()
     {

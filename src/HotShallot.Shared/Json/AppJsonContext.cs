@@ -4,6 +4,10 @@ using HotShallot.Shared.Enums;
 
 namespace HotShallot.Shared.Json;
 
+[JsonSourceGenerationOptions(
+    WriteIndented = false,
+    PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase,
+    GenerationMode = JsonSourceGenerationMode.Default)]
 [JsonSerializable(typeof(PaginatedResponse<ProjectDto>))]
 [JsonSerializable(typeof(PaginatedResponse<TaskItemSummaryDto>))]
 [JsonSerializable(typeof(TaskItemDto))]
