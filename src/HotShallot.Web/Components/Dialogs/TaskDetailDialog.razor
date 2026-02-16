@@ -34,18 +34,32 @@
         </RadzenTabs>
 
         <RadzenText TextStyle="TextStyle.H6" class="rz-mt-4">Notes</RadzenText>
-        <RadzenStack Gap="0.5rem" Style="max-height: 200px; overflow-y: auto;">
-            @foreach (var note in task.Notes.OrderByDescending(n => n.CreatedAt))
+        <RadzenStack Gap="0.5rem" Style="max-height: 200px; overflow-y: auto; min-height: 50px;">
+            @if (task.Notes.Any())
             {
-                <RadzenCard Variant="Variant.Flat" class="rz-p-2">
-                    <RadzenStack Orientation="Orientation.Horizontal" JustifyContent="JustifyContent.SpaceBetween">
-                        <RadzenText TextStyle="TextStyle.Caption"><b>@note.AuthorDisplayName</b></RadzenText>
-                        <RadzenText TextStyle="TextStyle.Caption">@note.CreatedAt.ToLocalTime().ToString("g")</RadzenText>
-                    </RadzenStack>
-                    <div class="rz-mt-1">
-                        @((MarkupString)Markdown.ToHtml(note.Content))
-                    </div>
-                </RadzenCard>
+                @foreach (var note in task.Notes.OrderByDescending(n => n.CreatedAt))
+                {
+                    <RadzenCard Variant="Variant.Flat" class="rz-p-2">
+                        <RadzenStack Orientation="Orientation.Horizontal" JustifyContent="JustifyContent.SpaceBetween">
+                            <RadzenText TextStyle="TextStyle.Caption"><b>@note.AuthorDisplayName</b></RadzenText>
+                            <RadzenText TextStyle="TextStyle.Caption">@note.CreatedAt.ToLocalTime().ToString("g")</RadzenText>
+                        </RadzenStack>
+                        <div class="rz-mt-1">
+                            @try
+                            {
+                                @((MarkupString)Markdown.ToHtml(note.Content ?? ""))
+                            }
+                            catch
+                            {
+                                @note.Content
+                            }
+                        </div>
+                    </RadzenCard>
+                }
+            }
+            else
+            {
+                <RadzenText TextStyle="TextStyle.Body2" class="rz-color-base-400 rz-font-italic rz-p-2">No notes yet.</RadzenText>
             }
         </RadzenStack>
 

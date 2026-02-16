@@ -32,6 +32,9 @@
         <RadzenDataGrid @ref="grid" Data="@tasks" TItem="TaskItemSummaryDto" 
                         AllowPaging="true" PageSize="20" AllowSorting="true"
                         RowSelect="@OnRowSelect" class="rz-shadow-2">
+            <Template Context="t">
+                <TaskPreview TaskId="@t.Id" />
+            </Template>
             <Columns>
                 <RadzenDataGridColumn TItem="TaskItemSummaryDto" Property="Id" Title="ID" Width="100px">
                     <Template Context="t">

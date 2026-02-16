@@ -54,16 +54,19 @@ public class ApiClient
 
     public async Task PostAsync(string path, object? body = null)
     {
-        var content = body ?? new { };
-        var bodyTypeInfo = AppJsonContext.Default.GetTypeInfo(content.GetType());
-        if (bodyTypeInfo == null) 
+        HttpContent? content = null;
+        if (body != null)
         {
-             throw new InvalidOperationException($"Type {content.GetType()} is not registered in AppJsonContext.");
+            var bodyTypeInfo = AppJsonContext.Default.GetTypeInfo(body.GetType());
+            if (bodyTypeInfo == null) 
+            {
+                 throw new InvalidOperationException($"Type {body.GetType()} is not registered in AppJsonContext.");
+            }
+            content = JsonContent.Create(body, bodyTypeInfo);
         }
         
-        // Use JsonContent.Create which supports JsonTypeInfo (base class)
-        using var jsonContent = JsonContent.Create(content, bodyTypeInfo);
-        var response = await _http.PostAsync(path, jsonContent);
+        var response = await _http.PostAsync(path, content);
+        content?.Dispose();
         await EnsureSuccess(response);
     }
 

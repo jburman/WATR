@@ -66,6 +66,7 @@ public class ListCommand : AsyncCommand<ListCommand.Settings>
 
         var table = new Table();
         table.AddColumn("ID");
+        table.AddColumn("Handle");
         table.AddColumn("Title");
         table.AddColumn("Status");
         table.AddColumn("Priority");
@@ -75,7 +76,8 @@ public class ListCommand : AsyncCommand<ListCommand.Settings>
         foreach (var task in response.Items)
         {
             table.AddRow(
-                task.Id.ToString()[..8],
+                task.Id.ToString(),
+                task.TaskHandle ?? task.TaskNumber.ToString(),
                 task.Title,
                 GetStatusMarkup(task.Status),
                 GetPriorityMarkup(task.Priority),

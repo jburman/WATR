@@ -72,7 +72,7 @@ public class AddCommand : AsyncCommand<AddCommand.Settings>
 
         var task = await _api.PostAsync<TaskItemDto>($"api/v1/projects/{project.Id}/tasks", request);
 
-        AnsiConsole.MarkupLine($"[green]✅ Created task {task.Id.ToString()[..8]}[/]");
+        AnsiConsole.MarkupLine($"[green]✅ Created task {task.Id}[/]");
         return 0;
     }
 }

@@ -86,7 +86,7 @@ shallot update <TASK_ID> --title "New Title" --status InProgress
 ```
 **Options:**
 - `--title <TEXT>`
-- `--body <TEXT>`
+- `--body <TEXT>`: Update description. Use `@filename` to read from a file.
 - `--status <STATUS>`
 - `--priority <LEVEL>`
 
@@ -143,3 +143,79 @@ foreach ($task in $tasks) {
     shallot update $task.Id --status InProgress
 }
 ```
+
+## For Agents / Scripting
+
+The CLI has been enhanced to support automation and agentic workflows.
+
+### Parsing Task IDs
+The `add` command outputs the full task ID (GUID) upon success, making it easy to capture and use in subsequent commands.
+```text
+✅ Created task 019c641e-afca-786a-91f9-5a7040386c64
+```
+
+### JSON Output
+Use the `--json` flag with `list` and `show` commands to get structured JSON output. This is ideal for parsing with tools like `jq` or PowerShell's `ConvertFrom-Json`.
+
+**Example: Get all task IDs in PowerShell**
+```powershell
+shallot list --json | ConvertFrom-Json | Select-Object -ExpandProperty Id
+```
+
+### Full IDs in List
+The default `list` view now shows the full Task ID and the Handle (e.g. `PROJ-123`) to ensure unambiguous identification.
+
+### File Input for Descriptions
+For complex or multi-line descriptions (especially Markdown), it is recommended to write the content to a temporary file and reference it using the `@` prefix. This avoids shell escaping issues.
+
+1. Write content to a temp file (e.g., `desc.md`).
+2. Run command: `shallot update <ID> --body @desc.md`
+3. Delete the temp file.
+
+This is supported by both `add` and `update` commands.
+
+## Best Practices for Agents
+
+When managing tasks autonomously, follow these guidelines to ensure clarity and traceability for human users.
+
+### User-Friendly Handles
+By default, tasks may have numeric or auto-generated handles. You should update these to meaningful, human-readable identifiers that reflect the task's context (e.g., `FE-LOGIN-01`, `API-AUTH-BUG`).
+```bash
+shallot update <TASK_ID> --handle "POS-HARDWARE"
+```
+
+### Rich Descriptions (Markdown)
+The task **Body** supports full Markdown. Use it to store comprehensive requirements, acceptance criteria, and implementation details.
+- **For Epics:** Maintain a list of references to sub-tasks in the body. Prefer using the human-readable **Handle** for these references, but UUIDs are also acceptable.
+    ```markdown
+    ## Sub-tasks
+    - [ ] [POS-UI-01] Design Cash Register Interface
+    - [ ] [POS-API-02] Implement Transaction Endpoint
+    ```
+- **Updating the Body:**
+    ```bash
+    shallot update <TASK_ID> --body @description.md
+    ```
+
+### Completion & Verification Logs
+Do not just mark a task as `Completed`. Before closing a task, use the `note` command to add a **Verification Log**.
+- Explain *how* the task was completed.
+- detailed the steps taken to verify the fix or feature.
+- This field supports Markdown, so use code blocks for command output or test results.
+
+```bash
+shallot note <TASK_ID> "✅ **Verified**\n\nRan integration tests:\n\`\`\`powershell\n./test-script.ps1\n\`\`\`\nAll passed."
+```
+
+### Direct Execution vs Scripts
+Prefer executing `shallot.exe` directly via your shell command tool rather than creating temporary `.ps1` or `.sh` files. This keeps the file system clean.
+
+- **Simple Commands:**
+    ```powershell
+    .\output\shallot.exe add "Cleanup Temp Files" --priority Low
+    ```
+- **Complex Strings:** For multi-line bodies or special characters, use a concise PowerShell command string:
+    ```powershell
+    powershell -Command ".\output\shallot.exe update <ID> --body 'Line 1`nLine 2'"
+    ```
+- **Escaping:** Be mindful of shell escaping for quotes (`"`) and backticks (`` ` ``).

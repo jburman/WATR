@@ -46,10 +46,20 @@ public class UpdateCommand : AsyncCommand<UpdateCommand.Settings>
 
     public override async Task<int> ExecuteAsync(CommandContext context, Settings settings, CancellationToken cancellationToken)
     {
+        var body = settings.Body;
+        if (body != null && body.StartsWith("@"))
+        {
+            var path = body[1..];
+            if (File.Exists(path))
+            {
+                body = await File.ReadAllTextAsync(path, cancellationToken);
+            }
+        }
+
         var request = new PatchTaskRequest
         {
             Title = settings.Title,
-            Body = settings.Body,
+            Body = body,
             Status = settings.Status,
             Priority = settings.Priority,
             TaskHandle = settings.TaskHandle,
