@@ -94,11 +94,11 @@
             .WithUrl(Navigation.ToAbsoluteUri("/hubs/tasks"))
             .Build();
 
-        hubConnection.On<Guid>("TaskCreated", async (id) => await LoadTasks());
-        hubConnection.On<Guid>("TaskUpdated", async (id) => await LoadTasks());
-        hubConnection.On<Guid, Guid>("TaskClaimed", async (tid, uid) => await LoadTasks());
-        hubConnection.On<Guid>("TaskReleased", async (id) => await LoadTasks());
-        hubConnection.On<Guid>("NoteAdded", async (id) => await LoadTasks());
+        hubConnection.On<Guid>("TaskCreated", _ => OnTaskEventReceivedAsync());
+        hubConnection.On<Guid>("TaskUpdated", _ => OnTaskEventReceivedAsync());
+        hubConnection.On<Guid, Guid>("TaskClaimed", (_, _) => OnTaskEventReceivedAsync());
+        hubConnection.On<Guid>("TaskReleased", _ => OnTaskEventReceivedAsync());
+        hubConnection.On<Guid>("NoteAdded", _ => OnTaskEventReceivedAsync());
 
         await hubConnection.StartAsync();
         if (ProjectContext.SelectedProject != null)
@@ -129,6 +129,17 @@
             tasks = response.Items;
         }
     }
+
+    private Task OnTaskEventReceivedAsync() =>
+        InvokeAsync(async () =>
+        {
+            await LoadTasks();
+            if (grid is not null)
+            {
+                await grid.Reload();
+            }
+            StateHasChanged();
+        });
 
     private async Task OnRowSelect(TaskItemSummaryDto t)
     {
