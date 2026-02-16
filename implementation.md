@@ -123,11 +123,11 @@ Create each entity class in a `Models/` folder inside `HotShallot.Shared`. Each 
 
 - [ ] Create `Models/UserPassKey.cs` with properties: `Id` (Guid), `UserId` (Guid), `CredentialId` (byte[]), `PublicKey` (byte[]), `SignatureCounter` (uint), `AaGuid` (Guid). Add navigation property: `User User`.
 
-- [ ] Create `Models/Project.cs` with properties: `Id` (Guid), `Name` (string), `Description` (string), `CreatedByUserId` (Guid), `CreatedAt` (DateTime), `UpdatedAt` (DateTime). Add navigation properties: `User CreatedBy`, `ICollection<ProjectMember> Members`, `ICollection<TaskItem> Tasks`.
+- [ ] Create `Models/Project.cs` with properties: `Id` (Guid), `Name` (string), `Description` (string), `CreatedByUserId` (Guid), `CreatedAt` (DateTime), `UpdatedAt` (DateTime), `TaskTypes` (List<string>). Add navigation properties: `User CreatedBy`, `ICollection<ProjectMember> Members`, `ICollection<TaskItem> Tasks`.
 
 - [ ] Create `Models/ProjectMember.cs` with properties: `ProjectId` (Guid), `UserId` (Guid), `Role` (ProjectRole enum). Add navigation properties: `Project Project`, `User User`.
 
-- [ ] Create `Models/TaskItem.cs` with properties: `Id` (Guid), `ProjectId` (Guid), `Title` (string), `Body` (string), `Status` (TaskItemStatus), `Priority` (TaskPriority), `AssignedToUserId` (Guid?), `CreatedByUserId` (Guid), `CreatedAt` (DateTime), `UpdatedAt` (DateTime), `ClosedAt` (DateTime?). Add navigation properties: `Project Project`, `User? AssignedTo`, `User CreatedBy`, `ICollection<TaskNote> Notes`.
+- [ ] Create `Models/TaskItem.cs` with properties: `Id` (Guid), `ProjectId` (Guid), `TaskNumber` (int), `TaskHandle` (string?), `TaskType` (string?), `Title` (string), `Body` (string), `Status` (TaskItemStatus), `Priority` (TaskPriority), `AssignedToUserId` (Guid?), `AssignedToName` (string?), `CreatedByUserId` (Guid), `CreatedAt` (DateTime), `UpdatedAt` (DateTime), `ClosedAt` (DateTime?). Add navigation properties: `Project Project`, `User? AssignedTo`, `User CreatedBy`, `ICollection<TaskNote> Notes`.
   > **Note:** Named `TaskItem` to avoid conflict with `System.Threading.Tasks.Task`.
 
 - [ ] Create `Models/TaskNote.cs` with properties: `Id` (Guid), `TaskId` (Guid), `AuthorUserId` (Guid), `Content` (string), `CreatedAt` (DateTime), `UpdatedAt` (DateTime?). Add navigation properties: `TaskItem Task`, `User Author`.
@@ -139,9 +139,9 @@ Create each entity class in a `Models/` folder inside `HotShallot.Shared`. Each 
 - [ ] Override `OnModelCreating` to configure:
   - **User:** `Email` has a unique index, `CreatedAt` defaults to `DateTime.UtcNow`.
   - **UserPassKey:** FK to `User` with cascade delete.
-  - **Project:** `Name` has a unique index. FK to `User` (`CreatedBy`) with restrict delete.
+  - **Project:** `Name` has a unique index. FK to `User` (`CreatedBy`) with restrict delete. Configure `TaskTypes` as a primitive collection.
   - **ProjectMember:** Composite PK on `(ProjectId, UserId)`. `Role` stored as string (use `.HasConversion<string>()`).
-  - **TaskItem:** FK to `Project` (cascade delete), FK to `AssignedTo` (set null on delete), FK to `CreatedBy` (restrict delete). `Status` and `Priority` stored as integers.
+  - **TaskItem:** FK to `Project` (cascade delete), FK to `AssignedTo` (set null on delete), FK to `CreatedBy` (restrict delete). `Status` and `Priority` stored as integers. Configure unique indexes for `(ProjectId, TaskNumber)` and `(ProjectId, TaskHandle)`.
   - **TaskNote:** FK to `TaskItem` (cascade delete), FK to `User` (`Author`) with restrict delete.
 - [ ] Configure SQLite connection string in `appsettings.json`:
   ```json
