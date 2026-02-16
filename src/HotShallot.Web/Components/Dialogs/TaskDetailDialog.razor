@@ -1,6 +1,7 @@
 @using HotShallot.Web.Services
 @using Markdig
 @inject TaskService TaskService
+@inject ProjectService ProjectService
 @inject DialogService DialogService
 @inject NotificationService NotificationService
 @inject ProjectContextService ProjectContext
@@ -15,6 +16,14 @@
         <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" JustifyContent="JustifyContent.SpaceBetween">
             <RadzenTextBox @bind-Value="task.Title" Style="width: 70%; font-size: 1.5rem;" />
             <RadzenStack Orientation="Orientation.Horizontal" Gap="0.5rem">
+                @if (members != null)
+                {
+                    <RadzenDropDown TValue="Guid?" Data="@members" TextProperty="DisplayName" ValueProperty="UserId" @bind-Value="task.AssignedToUserId" Placeholder="Unassigned" AllowClear="true" Style="width: 150px;" />
+                }
+                @if (ProjectContext.SelectedProject?.TaskTypes?.Any() == true)
+                {
+                    <RadzenDropDown TValue="string" Data="@ProjectContext.SelectedProject.TaskTypes" @bind-Value="task.TaskType" Placeholder="Type" Style="width: 120px;" />
+                }
                 <RadzenDropDown TValue="TaskItemStatus" Data="@(Enum.GetValues<TaskItemStatus>())" @bind-Value="task.Status" Style="width: 150px;" />
                 <RadzenDropDown TValue="TaskPriority" Data="@(Enum.GetValues<TaskPriority>())" @bind-Value="task.Priority" Style="width: 120px;" />
             </RadzenStack>
@@ -83,6 +92,7 @@
     private Task<AuthenticationState> authenticationStateTask { get; set; } = default!;
 
     private TaskItemDto? task;
+    private List<ProjectMemberDto>? members;
     private string newNoteContent = "";
     private Guid currentUserId;
 
@@ -92,6 +102,17 @@
         currentUserId = Guid.Parse(authState.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)!.Value);
         
         task = await TaskService.GetTaskAsync(TaskId, currentUserId);
+        if (task != null)
+        {
+            try
+            {
+                members = await ProjectService.GetProjectMembersAsync(task.ProjectId, currentUserId);
+            }
+            catch (Exception ex)
+            {
+                NotificationService.Notify(NotificationSeverity.Error, "Error", $"Failed to load members: {ex.Message}");
+            }
+        }
     }
 
     async Task SaveTask()
@@ -105,7 +126,9 @@
                 Title = task.Title,
                 Body = task.Body,
                 Status = task.Status,
-                Priority = task.Priority
+                Priority = task.Priority,
+                TaskType = task.TaskType,
+                AssignedToUserId = task.AssignedToUserId
             }, currentUserId);
             NotificationService.Notify(NotificationSeverity.Success, "Success", "Task updated");
             DialogService.Close(true);

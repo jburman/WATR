@@ -53,6 +53,7 @@ public class TaskService
                 Id = t.Id,
                 TaskNumber = t.TaskNumber,
                 TaskHandle = t.TaskHandle,
+                TaskType = t.TaskType,
                 Title = t.Title,
                 Status = t.Status,
                 Priority = t.Priority,
@@ -165,6 +166,11 @@ public class TaskService
         task.TaskHandle = request.TaskHandle;
         task.TaskType = request.TaskType;
         
+        if (request.AssignedToUserId != task.AssignedToUserId)
+        {
+            task.AssignedToUserId = request.AssignedToUserId;
+        }
+
         if (task.Status != request.Status)
         {
             task.Status = request.Status;

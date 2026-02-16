@@ -181,15 +181,24 @@ public class ProjectService
         db.Projects.Add(project);
         await db.SaveChangesAsync();
 
-        return new ProjectDto
-        {
-            Id = project.Id,
-            Name = project.Name,
-            Description = project.Description,
-            CreatedByUserId = project.CreatedByUserId,
-            CreatedAt = project.CreatedAt,
-            UpdatedAt = project.UpdatedAt,
-            TaskTypes = project.TaskTypes
-        };
+    public async Task<List<ProjectMemberDto>> GetProjectMembersAsync(Guid projectId, Guid userId)
+    {
+        using var db = await _dbFactory.CreateDbContextAsync();
+        
+        // Verify user is a member
+        var isMember = await db.ProjectMembers.AnyAsync(m => m.ProjectId == projectId && m.UserId == userId);
+        if (!isMember) throw new UnauthorizedAccessException("User is not a member of this project.");
+
+        return await db.ProjectMembers
+            .Where(m => m.ProjectId == projectId)
+            .Include(m => m.User)
+            .Select(m => new ProjectMemberDto
+            {
+                UserId = m.UserId,
+                DisplayName = m.User.DisplayName,
+                Email = m.User.Email,
+                Role = m.Role
+            })
+            .ToListAsync();
     }
 }

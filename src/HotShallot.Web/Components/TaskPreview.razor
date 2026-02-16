@@ -2,7 +2,7 @@
 @using Markdig
 @inject TaskService TaskService
 
-<RadzenStack Gap="1rem" Style="padding: 1rem; background-color: var(--rz-base-100);">
+<RadzenStack Gap="1rem" Style="padding: 1rem; background-color: var(--rz-base-800);">
     @if (task == null)
     {
         <RadzenProgressBar Circular="true" Value="100" Mode="ProgressBarMode.Indeterminate" />
@@ -11,44 +11,46 @@
     {
         <RadzenStack Orientation="Orientation.Horizontal" Gap="2rem" AlignItems="AlignItems.Start">
             <RadzenStack Style="flex: 2;">
-                <RadzenText TextStyle="TextStyle.Subtitle2" class="rz-color-primary">Description</RadzenText>
-                <div class="rz-p-3 rz-border-radius-1 rz-background-color-white" style="max-height: 300px; overflow-y: auto;">
+                <RadzenText TextStyle="TextStyle.Subtitle2" class="rz-color-primary-light">Description</RadzenText>
+                <RadzenCard Variant="Variant.Outlined" class="rz-p-3 rz-background-color-base-900" Style="max-height: 300px; overflow-y: auto;">
                     @if (string.IsNullOrWhiteSpace(task.Body))
                     {
-                        <RadzenText TextStyle="TextStyle.Body2" class="rz-font-italic rz-color-base-400">No description.</RadzenText>
+                        <RadzenText TextStyle="TextStyle.Body2" class="rz-font-italic rz-color-base-500">No description.</RadzenText>
                     }
                     else
                     {
-                        @((MarkupString)Markdown.ToHtml(task.Body))
+                        <div class="markdown-content">
+                            @((MarkupString)Markdown.ToHtml(task.Body))
+                        </div>
                     }
-                </div>
+                </RadzenCard>
             </RadzenStack>
 
             <RadzenStack Style="flex: 1;">
-                <RadzenText TextStyle="TextStyle.Subtitle2" class="rz-color-primary">Latest Notes</RadzenText>
+                <RadzenText TextStyle="TextStyle.Subtitle2" class="rz-color-primary-light">Latest Notes</RadzenText>
                 <RadzenStack Gap="0.5rem" Style="max-height: 300px; overflow-y: auto;">
                     @if (task.Notes.Any())
                     {
                         @foreach (var note in task.Notes.OrderByDescending(n => n.CreatedAt).Take(5))
                         {
-                            <RadzenCard Variant="Variant.Flat" class="rz-p-2 rz-background-color-white">
+                            <RadzenCard Variant="Variant.Outlined" class="rz-p-2 rz-background-color-base-900">
                                 <RadzenStack Orientation="Orientation.Horizontal" JustifyContent="JustifyContent.SpaceBetween">
-                                    <RadzenText TextStyle="TextStyle.Caption" class="rz-font-bold">@note.AuthorDisplayName</RadzenText>
-                                    <RadzenText TextStyle="TextStyle.Caption">@note.CreatedAt.ToLocalTime().ToString("g")</RadzenText>
+                                    <RadzenText TextStyle="TextStyle.Caption" class="rz-font-bold rz-color-base-300">@note.AuthorDisplayName</RadzenText>
+                                    <RadzenText TextStyle="TextStyle.Caption" class="rz-color-base-500">@note.CreatedAt.ToLocalTime().ToString("g")</RadzenText>
                                 </RadzenStack>
-                                <div class="rz-mt-1 rz-text-body2">
+                                <div class="rz-mt-1 rz-text-body2 markdown-content">
                                     @((MarkupString)Markdown.ToHtml(note.Content))
                                 </div>
                             </RadzenCard>
                         }
                         @if (task.Notes.Count > 5)
                         {
-                            <RadzenText TextStyle="TextStyle.Caption" class="rz-text-align-center">Show all in details view...</RadzenText>
+                            <RadzenText TextStyle="TextStyle.Caption" class="rz-text-align-center rz-color-base-400">Show all in details view...</RadzenText>
                         }
                     }
                     else
                     {
-                        <RadzenText TextStyle="TextStyle.Body2" class="rz-font-italic rz-color-base-400">No notes yet.</RadzenText>
+                        <RadzenText TextStyle="TextStyle.Body2" class="rz-font-italic rz-color-base-500">No notes yet.</RadzenText>
                     }
                 </RadzenStack>
             </RadzenStack>

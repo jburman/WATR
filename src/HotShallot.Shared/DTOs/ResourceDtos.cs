@@ -53,6 +53,7 @@ public class TaskItemSummaryDto
     public Guid Id { get; set; }
     public int TaskNumber { get; set; }
     public string? TaskHandle { get; set; }
+    public string? TaskType { get; set; }
     public string Title { get; set; } = string.Empty;
     public TaskItemStatus Status { get; set; }
     public TaskPriority Priority { get; set; }
@@ -76,6 +77,15 @@ public class UpdateTaskRequest
     public string? TaskType { get; set; }
     public TaskItemStatus Status { get; set; }
     public TaskPriority Priority { get; set; }
+    public Guid? AssignedToUserId { get; set; }
+}
+
+public class ProjectMemberDto
+{
+    public Guid UserId { get; set; }
+    public string DisplayName { get; set; } = string.Empty;
+    public string Email { get; set; } = string.Empty;
+    public ProjectRole Role { get; set; }
 }
 
 public class PatchTaskRequest
