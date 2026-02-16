@@ -7,6 +7,7 @@
 1.  **Visibility:** Provide a dashboard for humans to monitor agent progress.
 2.  **Coordination:** Allow agents to claim tasks, leave notes, and update status to prevent work duplication.
 3.  **Accessibility:** accessible via Web (humans) and CLI/API (agents & humans).
+4.  **Agent-Centric Interoperability:** Ensure all features are scriptable and consumable by autonomous agents via structured outputs (JSON) and stable identifiers.
 
 ## 2. Architecture
 
@@ -47,7 +48,7 @@ graph TD
 ## 3. Data Model
 
 ### 3.1 Schema
-The database will use SQLite. IDs for Tasks will be **UUID v7** (Time-sortable).
+The database uses SQLite. IDs for Tasks are **UUID v7** (Time-sortable).
 
 #### **Users**
 | Column | Type | Notes |
@@ -76,6 +77,7 @@ The database will use SQLite. IDs for Tasks will be **UUID v7** (Time-sortable).
 | `CreatedByUserId` | `Guid` | FK -> Users.Id |
 | `CreatedAt` | `DATETIME` | UTC |
 | `UpdatedAt` | `DATETIME` | UTC |
+| `TaskTypes` | `TEXT` | JSON Array (e.g., `["Epic", "Task", "Bug"]`) |
 
 #### **ProjectMembers**
 | Column | Type | Notes |
@@ -89,11 +91,15 @@ The database will use SQLite. IDs for Tasks will be **UUID v7** (Time-sortable).
 | :--- | :--- | :--- |
 | `Id` | `Guid` | PK, UUID v7 |
 | `ProjectId` | `Guid` | FK -> Projects.Id |
+| `TaskNumber` | `INTEGER` | Incremental ID per project |
+| `TaskHandle` | `TEXT` | User-friendly ID (e.g., `PROJ-123`) |
+| `TaskType` | `TEXT` | e.g., "Epic", "Bug" |
 | `Title` | `TEXT` | |
 | `Body` | `TEXT` | Markdown content |
 | `Status` | `INTEGER` | 0=Open, 1=InProgress, 2=Completed, 3=Blocked, 4=Cancelled |
 | `Priority` | `INTEGER` | 0=None, 1=Low, 2=Medium, 3=High, 4=Critical |
 | `AssignedToUserId` | `Guid` | FK -> Users.Id (Nullable) |
+| `AssignedToName` | `TEXT` | Free-text assignee (for agents/external users) |
 | `CreatedByUserId` | `Guid` | FK -> Users.Id |
 | `CreatedAt` | `DATETIME` | UTC |
 | `UpdatedAt` | `DATETIME` | UTC |
@@ -183,7 +189,8 @@ Standard error codes: `bad_request`, `unauthorized`, `forbidden`, `not_found`, `
 *   `POST /projects/{id}/tasks` - Create a new task.
 *   `GET /tasks/{id}` - Get task details (includes notes inline).
 *   `PUT /tasks/{id}` - Full update of task (title, body, status, priority).
-*   `PATCH /tasks/{id}` - Partial update. Accepts a JSON object with only the fields to change (e.g., `{ "status": "Completed" }`).
+*   `PATCH /tasks/{id}` - Partial update. Accepts a JSON object with only the fields to change.
+    *   Supports: `status`, `priority`, `title`, `body`, `taskHandle`, `taskType`, `assignedToUserId`, `assignedToName`.
 *   `POST /tasks/{id}/claim` - Assign task to current user (Agent).
 *   `POST /tasks/{id}/release` - Unassign task.
 *   `GET /tasks/{id}/notes` - List notes for a task (paginated).
@@ -201,25 +208,31 @@ Since Blazor Server already maintains a persistent SignalR connection to the ser
 
 ### 6.2 Layout
 *   **MainLayout:** Standard top navigation bar (Logo, Project Selector, User Profile/Logout).
-*   **Theme:** Dark mode by default (coding agent aesthetic).
+*   **Theme:** Dark mode by default (coding agent aesthetic). Uses Radzen theme variables (e.g., `--rz-base-800`, `--rz-base-900`) for deep integration and proper contrast.
 *   **Keyboard Shortcuts:** `n` to create new task, `Enter` to open selected task, `Esc` to close dialogs.
 
 ### 6.3 Pages
 *   **Login:** Simple centered card with "Login with Passkey" button.
 *   **Dashboard:**
     *   **Component:** `RadzenDataGrid<Task>`
-    *   **Columns:** ID (truncated), Title, Status (Badge), Priority (Badge), Assigned To (Avatar/Name), Updated.
+    *   **Columns:** ID (truncated), Title, Type, Status (Badge), Priority (Badge), Assigned To (Avatar/Name), Updated.
     *   **Features:**
         *   Filtering (Status: Open, InProgress, Done, Blocked, Cancelled).
         *   **"My Tasks" quick filter:** One-click toggle to show only tasks assigned to the current user.
         *   Sorting (by Date, Priority).
         *   Row Selection opens a **Task Detail Dialog**.
+        *   **Row Expansion:** Displays a read-only preview of the Task Body (rendered Markdown) and the latest notes directly within the grid.
 *   **Task Detail (Dialog/Page):**
     *   Title (Editable).
+    *   **Task Type Dropdown:** (e.g., Epic, Task) driven by Project configuration.
     *   Status Dropdown.
     *   Priority Dropdown.
+    *   **Assignee Selection:**
+        *   Uses `RadzenAutoComplete` to support **Hybrid Assignment**.
+        *   Users can select existing Project Members OR type a free-text name (e.g., "Agent Smith").
+        *   The backend attempts to resolve names to User IDs but falls back to `AssignedToName` for flexibility.
     *   Body: Markdown Viewer (rendered) + Editor tab.
-    *   Notes Section: List of notes with timestamps + "Add Note" text area.
+    *   Notes Section: List of notes with timestamps + "Add Note" text area. Robust handling for markdown rendering failures and empty states.
 *   **Device Login:** Simple form to enter the 8-digit CLI code.
 
 ## 7. CLI Tool (`shallot`)
@@ -228,7 +241,7 @@ Since Blazor Server already maintains a persistent SignalR connection to the ser
 *   **Library:** `Spectre.Console` for rich terminal UI (tables, spinners, colored output).
 *   **Output Modes:**
     *   **Default:** Human-readable with Spectre.Console formatting.
-    *   `--json`: Machine-parseable JSON output for agent consumption.
+    *   `--json`: Machine-parseable JSON output for agent consumption. Essential for integration into agent workflows.
     *   `--quiet` / `-q`: Suppress decorative output, print only essential data (IDs, status). Pairs with `--json` for full machine-readability.
 *   **AOT:** Published as Native AOT for fast startup and single-file distribution.
 *   **Token Management:** The CLI automatically refreshes expired access tokens using the stored refresh token, with no user intervention required.
@@ -242,13 +255,13 @@ Since Blazor Server already maintains a persistent SignalR connection to the ser
 *   `shallot login`: Initiates device code flow.
 *   `shallot logout`: Clears local credentials.
 *   `shallot status`: Shows logged-in user, current project context, and summary counts (open/in-progress/blocked tasks).
-*   `shallot list --project <name> --status <filter>`: Key-value table of tasks.
-*   `shallot show <id>`: Renders task details (renders Markdown to ANSI if possible).
+*   `shallot list --project <name> --status <filter>`: Key-value table of tasks. Supports `--json` flag.
+*   `shallot show <id>`: Renders task details (renders Markdown to ANSI if possible). Supports `--json` flag.
 *   `shallot add "Title" --body "Inline text" --project <name>`: Creates a task. Body supports:
     *   `--body "Inline markdown text"` for literal content.
-    *   `--body @file.md` to read from a file.
+    *   `--body @file.md` to read from a file (RECOMMENDED for complex markdown to avoid shell escaping issues).
     *   `--body -` to read from stdin (for piping).
-*   `shallot update <id> [--status <status>] [--title "New Title"] [--body "text"] [--priority <level>]`: General-purpose update command for changing any task field.
+*   `shallot update <id> [--status <status>] [--title "New Title"] [--body "text"] [--priority <level>]`: General-purpose update command for changing any task field. Supports file-based body updates via `@file.md`.
 *   `shallot claim <id>`: Assigns task to self.
 *   `shallot done <id>`: Marks task as completed.
 *   `shallot note <id> "Message"`: Appends a note.
@@ -304,16 +317,18 @@ A cartoon vector-style shallot (small onion) with a determined, slightly manic f
 
 ## 10. Implementation Roadmap
 
-1.  **Phase 1: Core Skeleton**
+1.  **Phase 1: Core Skeleton** (Completed)
     *   Setup Solution (Web, API, Shared, CLI).
     *   Configure EF Core + SQLite.
     *   Implement Basic User/Task Models.
-2.  **Phase 2: Authentication**
+2.  **Phase 2: Authentication** (Completed)
     *   Implement FIDO2 Web Login.
     *   Implement Device Code Token Exchange.
-3.  **Phase 3: API & CLI**
+3.  **Phase 3: API & CLI** (Completed)
     *   Build Task CRUD API.
     *   Build `shallot` CLI with Spectre.Console.
-4.  **Phase 4: Web UI**
-    *   Implement Radzen DataGrid.
-    *   Task Detail Views.
+    *   Implement Agent-centric features (JSON output, File inputs).
+4.  **Phase 4: Web UI** (Completed)
+    *   Implement Radzen DataGrid with Row Expansion.
+    *   Task Detail Views with Hybrid Assignee selection and Dark Mode theming.
+    *   Real-time updates via SignalR.
