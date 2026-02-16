@@ -1,0 +1,117 @@
+---
+name: hotshallot-manager
+description: Comprehensive guide for using the HotShallot CLI (shallot) to manage projects, tasks, and epics.
+version: 1.0.0
+---
+
+# HotShallot Task Management
+
+This skill provides instructions for using the `shallot` CLI tool to manage your work. It assumes `shallot` is installed and available in your system PATH.
+
+## 1. Initial Setup
+
+Before starting work, ensure you are logged in and have a project context set.
+
+### Login
+If you receive authentication errors (exit code 2), run:
+```bash
+shallot login
+```
+Follow the device code flow instructions provided in the output.
+
+### Project Setup
+1.  **Create a Project:** If starting a new project.
+    ```bash
+    shallot project create "MyProject" --description "Description of the project"
+    ```
+2.  **Set Context:** Set the default project to avoid repeating the `--project` flag.
+    ```bash
+    shallot project set "MyProject"
+    ```
+
+## 2. Managing Tasks
+
+### Listing Tasks
+To see what needs to be done:
+```bash
+shallot list --status Open
+```
+*   **Tip:** Use `--json` to parse output programmatically.
+    ```bash
+    shallot list --status Open --json
+    ```
+
+### Creating Tasks & Epics
+Create tasks with clear titles and priorities.
+
+**Standard Task:**
+```bash
+shallot add "Implement Login Page" --priority High
+```
+
+**Epic (Large Feature):**
+1.  Create the high-level Epic.
+    ```bash
+    shallot add "Authentication System" --type Epic --priority Critical
+    ```
+2.  **Capture the ID and Task Number** returned in the output or via `shallot list`.
+3.  **Set a Handle:** Give it a human-readable identifier prefixed with the Task Number.
+    *   *Format:* `{TaskNumber}-{ShortDescription}` (e.g., `43-AUTH-EPIC`)
+    ```bash
+    shallot update <ID> --handle "43-AUTH-EPIC"
+    ```
+
+### Adding Details (Markdown)
+For complex requirements, use the task body. You can reference files directly to avoid shell escaping issues.
+
+1.  Write details to a temporary file (e.g., `temp_desc.md`).
+2.  Update the task using the `@` prefix.
+    ```bash
+    shallot update <ID> --body @temp_desc.md
+    ```
+3.  Delete the temporary file.
+
+**Best Practice for Epics:**
+In the body of an Epic, maintain a checklist of sub-tasks referencing their Handles or IDs.
+
+## 3. Workflow Lifecycle
+
+### Claiming Work
+When you start working on a task:
+```bash
+shallot claim <ID>
+```
+This assigns the task to you.
+
+### Updating Status
+Move tasks through their lifecycle:
+```bash
+shallot update <ID> --status InProgress
+```
+
+### Adding Notes
+Keep a log of your progress, decisions, and technical details.
+```bash
+shallot note <ID> "Started implementation. Using JWT for token management."
+```
+
+### Completion
+When the work is done and verified:
+1.  **Add a Verification Note:**
+    ```bash
+    shallot note <ID> "✅ Verified. Unit tests passed. Manual test of login flow successful."
+    ```
+2.  **Mark as Done:**
+    ```bash
+    shallot done <ID>
+    ```
+
+## 4. Agent Best Practices
+
+*   **JSON Output:** Always prefer `--json` when you need to read data. It contains full fidelity fields.
+*   **Handles:** Assign user-friendly handles (`shallot update <ID> --handle "NAME"`) to important tasks so you can reference them easily later without memorizing UUIDs.
+*   **Error Handling:**
+    *   Exit Code `0`: Success.
+    *   Exit Code `2`: Auth expired -> Run `shallot login`.
+    *   Exit Code `3`: Not found -> Check ID.
+    *   Exit Code `4`: Conflict -> Task might be claimed by someone else.
