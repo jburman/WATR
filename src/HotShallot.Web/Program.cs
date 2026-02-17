@@ -127,10 +127,48 @@ var app = builder.Build();
 // Configure SQLite pragmas and run migrations
 using (var scope = app.Services.CreateScope())
 {
-    var db = scope.ServiceProvider.GetRequiredService<HotShallotDbContext>();
-    db.Database.ExecuteSqlRaw("PRAGMA journal_mode = WAL;");
-    db.Database.ExecuteSqlRaw("PRAGMA synchronous = NORMAL;");
-    db.Database.Migrate();
+    var services = scope.ServiceProvider;
+    var logger = services.GetRequiredService<ILogger<Program>>();
+    var db = services.GetRequiredService<HotShallotDbContext>();
+    var config = services.GetRequiredService<IConfiguration>();
+    
+    var connString = config.GetConnectionString("DefaultConnection") ?? "Unknown";
+    // Be careful with secrets in prod logs, but SQLite connection string is usually just a file path.
+    logger.LogInformation("Using connection string: {ConnString}", connString);
+
+    // Ensure directory exists if it's a file path
+    try 
+    {
+        var builder = new Microsoft.Data.Sqlite.SqliteConnectionStringBuilder(connString);
+        var dataSource = builder.DataSource;
+        if (!string.IsNullOrEmpty(dataSource) && dataSource != ":memory:")
+        {
+            var dir = Path.GetDirectoryName(dataSource);
+            if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
+            {
+                logger.LogInformation("Creating database directory: {Dir}", dir);
+                Directory.CreateDirectory(dir);
+            }
+        }
+    }
+    catch (Exception ex)
+    {
+        logger.LogError(ex, "Error checking database directory.");
+    }
+
+    try 
+    {
+        db.Database.ExecuteSqlRaw("PRAGMA journal_mode = WAL;");
+        db.Database.ExecuteSqlRaw("PRAGMA synchronous = NORMAL;");
+        db.Database.Migrate();
+        logger.LogInformation("Database migration completed.");
+    }
+    catch (Exception ex)
+    {
+        logger.LogError(ex, "Error during database migration.");
+        // Rethrowing ensures the app doesn't start in a broken state, but for debugging on Azure we might want logs.
+        throw; 
+    }
 }
 
 app.UseExceptionHandler(exceptionHandlerApp =>

@@ -48,7 +48,7 @@ public class ProjectContextService
     // Keep synchronous for backward compatibility if needed, but prefer Async
     public void SelectProject(ProjectDto? project)
     {
-        SelectProjectAsync(project); // Fire and forget storage update
+        _ = SelectProjectAsync(project); // Fire and forget storage update
     }
 
     public async Task<Guid?> GetStoredProjectIdAsync()
