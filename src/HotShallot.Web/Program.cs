@@ -139,8 +139,8 @@ using (var scope = app.Services.CreateScope())
     // Ensure directory exists if it's a file path
     try 
     {
-        var builder = new Microsoft.Data.Sqlite.SqliteConnectionStringBuilder(connString);
-        var dataSource = builder.DataSource;
+        var csBuilder = new Microsoft.Data.Sqlite.SqliteConnectionStringBuilder(connString);
+        var dataSource = csBuilder.DataSource;
         if (!string.IsNullOrEmpty(dataSource) && dataSource != ":memory:")
         {
             var dir = Path.GetDirectoryName(dataSource);
