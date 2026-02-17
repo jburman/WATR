@@ -3,11 +3,13 @@
 @using HotShallot.Web.Components.Dialogs
 @using Microsoft.AspNetCore.SignalR.Client
 @using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Server.ProtectedBrowserStorage
 @attribute [Authorize]
 @inject TaskService TaskService
 @inject ProjectContextService ProjectContext
 @inject DialogService DialogService
 @inject NavigationManager Navigation
+@inject ProtectedLocalStorage LocalStorage
 @implements IAsyncDisposable
 
 <RadzenStack Gap="1rem">
@@ -26,7 +28,7 @@
             <RadzenLabel Text="Status:" Style="margin-right: 0.5rem;" />
             <RadzenDropDown TValue="IEnumerable<TaskItemStatus>" @bind-Value="selectedStatuses" Data="@allStatuses" 
                             Multiple="true" Chips="true" AllowClear="true" Placeholder="Select statuses..."
-                            Change="@(args => LoadTasks())" Style="width: 500px;" MaxHeight="400px" />
+                            Change="@OnStatusFilterChanged" Style="width: 500px;" PopupStyle="height: 260px;" MaxHeight="400px" />
         </RadzenStack>
 
         <RadzenDataGrid @ref="grid" Data="@tasks" TItem="TaskItemSummaryDto" KeyProperty="Id"
@@ -46,7 +48,20 @@
                 <RadzenDataGridColumn TItem="TaskItemSummaryDto" Property="Title" Title="Title" />
                 <RadzenDataGridColumn TItem="TaskItemSummaryDto" Property="Status" Title="Status" Width="150px">
                     <Template Context="t">
-                        <RadzenBadge BadgeStyle="@GetStatusStyle(t.Status)" Text="@t.Status.ToString()" />
+                        @if (editingStatusId == t.Id)
+                        {
+                            <div @onclick:stopPropagation="true">
+                                <RadzenDropDown TValue="TaskItemStatus" Value="@t.Status" Data="@(Enum.GetValues<TaskItemStatus>())"
+                                                Change="@(args => OnStatusChange(t, (TaskItemStatus)args))"
+                                                Style="width: 100%; height: 30px; font-size: 0.875rem; padding: 0;" PopupStyle="height: 260px;" />
+                            </div>
+                        }
+                        else
+                        {
+                            <div @onclick="@(() => editingStatusId = t.Id)" @onclick:stopPropagation="true" style="cursor: pointer; width: 100%; height: 100%; display: flex; align-items: center;">
+                                <RadzenBadge BadgeStyle="@GetStatusStyle(t.Status)" Text="@t.Status.ToString()" />
+                            </div>
+                        }
                     </Template>
                 </RadzenDataGridColumn>
                 <RadzenDataGridColumn TItem="TaskItemSummaryDto" Property="Priority" Title="Priority" Width="120px">
@@ -74,6 +89,7 @@
     private List<TaskItemSummaryDto> tasks = new();
     private HubConnection? hubConnection;
     private Guid currentUserId;
+    private Guid? editingStatusId;
     private readonly HashSet<Guid> expandedTaskIds = new();
     private IEnumerable<TaskItemStatus> allStatuses = Enum.GetValues<TaskItemStatus>();
     private IEnumerable<TaskItemStatus> selectedStatuses = new List<TaskItemStatus> { TaskItemStatus.Open, TaskItemStatus.InProgress };
@@ -88,6 +104,16 @@
         {
             currentUserId = Guid.Parse(authState.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)!.Value);
         }
+
+        try
+        {
+            var result = await LocalStorage.GetAsync<IEnumerable<TaskItemStatus>>("dashboardStatusFilter");
+            if (result.Success && result.Value != null)
+            {
+                selectedStatuses = result.Value;
+            }
+        }
+        catch { /* Ignore storage errors */ }
 
         ProjectContext.OnProjectChanged += RefreshData;
         await LoadTasks();
@@ -107,6 +133,17 @@
         {
             await hubConnection.InvokeAsync("JoinProject", ProjectContext.SelectedProject.Id.ToString());
         }
+    }
+
+    private async Task OnStatusFilterChanged(object value)
+    {
+        try
+        {
+            await LocalStorage.SetAsync("dashboardStatusFilter", selectedStatuses);
+        }
+        catch { /* Ignore */ }
+        
+        await LoadTasks();
     }
 
     private async void RefreshData()
@@ -198,6 +235,24 @@
         {
             await TaskService.CreateTaskAsync(selectedProject!.Id, newTask, currentUserId);
             await LoadTasks();
+        }
+    }
+
+    private async Task OnStatusChange(TaskItemSummaryDto task, TaskItemStatus newStatus)
+    {
+        editingStatusId = null;
+        if (task.Status == newStatus) return;
+
+        try
+        {
+            await TaskService.UpdateTaskStatusAsync(task.Id, newStatus, currentUserId);
+            // No need to manually reload, SignalR will trigger RefreshData -> LoadTasks
+        }
+        catch (Exception ex)
+        {
+            // Revert UI if update fails (though grid reload will fix it eventually)
+            await LoadTasks(); 
+            // Ideally show notification
         }
     }
 

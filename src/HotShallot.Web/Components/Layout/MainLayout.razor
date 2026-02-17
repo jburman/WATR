@@ -14,7 +14,10 @@
     <RadzenHeader>
         <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" JustifyContent="JustifyContent.SpaceBetween" Gap="1rem" class="rz-p-2 w-100">
             <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="1rem">
-                <RadzenLink Path="/" Text="HotShallot 🌶️‍🔥" class="rz-text-h6 rz-color-base-900 rz-text-none" Style="text-decoration: none; color: inherit;" />
+                <a href="/" class="cyberpunk-logo" style="display: flex; align-items: center; gap: 10px; position: relative; z-index: 10;">
+                    <img src="logo1.png" alt="Logo" style="height: 80px; margin-top: -23px; margin-bottom: -27px; margin-left: -12px;" />
+                    <span>HotShallot</span>
+                </a>
                 
                 <AuthorizeView>
                     <Authorized>
@@ -73,17 +76,19 @@
             
             if (ProjectContext.SelectedProject == null && projects.Any())
             {
-                ProjectContext.SelectProject(projects.First());
+                var storedId = await ProjectContext.GetStoredProjectIdAsync();
+                var projectToSelect = projects.FirstOrDefault(p => p.Id == storedId) ?? projects.First();
+                await ProjectContext.SelectProjectAsync(projectToSelect);
             }
         }
     }
 
-    private void OnProjectChanged(object value)
+    private async Task OnProjectChanged(object value)
     {
         if (value is Guid projectId)
         {
             var project = projects.FirstOrDefault(p => p.Id == projectId);
-            ProjectContext.SelectProject(project);
+            await ProjectContext.SelectProjectAsync(project);
         }
     }
 
@@ -129,7 +134,7 @@
             {
                 var newProject = await ProjectService.CreateProjectAsync(request, userId);
                 await LoadProjects();
-                ProjectContext.SelectProject(newProject); // Auto-select the new project
+                await ProjectContext.SelectProjectAsync(newProject); // Auto-select the new project
                 NotificationService.Notify(NotificationSeverity.Success, "Success", $"Project '{newProject.Name}' created.");
             }
             catch (Exception ex)
@@ -188,7 +193,7 @@
             {
                 var updatedProject = await ProjectService.UpdateProjectAsync(project.Id, request, userId);
                 await LoadProjects();
-                ProjectContext.SelectProject(updatedProject);
+                await ProjectContext.SelectProjectAsync(updatedProject);
                 NotificationService.Notify(NotificationSeverity.Success, "Success", "Project updated.");
             }
             catch (Exception ex)

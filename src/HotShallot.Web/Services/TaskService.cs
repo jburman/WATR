@@ -204,6 +204,36 @@ public class TaskService
         await _hubContext.Clients.Group(task.ProjectId.ToString()).SendAsync("TaskUpdated", task.Id);
     }
 
+    public async Task UpdateTaskStatusAsync(Guid taskId, TaskItemStatus status, Guid userId)
+    {
+        using var db = await _dbFactory.CreateDbContextAsync();
+        var task = await db.TaskItems.FindAsync(taskId);
+        if (task == null) throw new Exception("Task not found");
+
+        if (!await VerifyMembershipAsync(db, task.ProjectId, userId))
+        {
+            throw new UnauthorizedAccessException("User is not a member of this project");
+        }
+
+        if (task.Status != status)
+        {
+            task.Status = status;
+            if (task.Status == TaskItemStatus.Completed || task.Status == TaskItemStatus.Cancelled)
+            {
+                task.ClosedAt = DateTime.UtcNow;
+            }
+            else
+            {
+                task.ClosedAt = null;
+            }
+            
+            task.UpdatedAt = DateTime.UtcNow;
+            await db.SaveChangesAsync();
+
+            await _hubContext.Clients.Group(task.ProjectId.ToString()).SendAsync("TaskUpdated", task.Id);
+        }
+    }
+
     public async Task<TaskItemDto?> GetTaskByHandleAsync(Guid projectId, string handle, Guid userId)
     {
         using var db = await _dbFactory.CreateDbContextAsync();

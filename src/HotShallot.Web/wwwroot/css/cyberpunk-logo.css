@@ -1,0 +1,34 @@
+.cyberpunk-logo {
+    font-family: 'Courier New', Courier, monospace;
+    font-weight: 900;
+    text-transform: uppercase;
+    color: #fff; /* White text for readability */
+    text-decoration: none !important;
+    transition: all 0.3s ease;
+    padding: 8px 16px;
+    background-color: transparent;
+    border: 2px solid #0ff; /* Neon Cyan Border */
+    border-radius: 4px;
+    letter-spacing: 2px;
+    position: relative;
+    overflow: visible;
+    
+    /* Clean Neon Glow */
+    text-shadow: 0 0 5px rgba(0, 255, 255, 0.5);
+    box-shadow: 0 0 5px rgba(0, 255, 255, 0.5), inset 0 0 5px rgba(0, 255, 255, 0.2);
+}
+
+.cyberpunk-logo:hover {
+    color: #0ff; /* Text turns cyan on hover */
+    background-color: rgba(0, 255, 255, 0.1);
+    transform: scale(1.05);
+    
+    /* Intensified Glow */
+    text-shadow: 
+        0 0 10px #0ff,
+        0 0 20px #0ff;
+    box-shadow: 
+        0 0 15px #0ff,
+        inset 0 0 10px #0ff;
+    border-color: #fff; /* Border turns white */
+}
