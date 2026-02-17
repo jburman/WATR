@@ -65,23 +65,6 @@
         margin-bottom: 0.5rem;
     }
 
-    .logo-svg {
-        width: 80px;
-        height: 80px;
-        filter: drop-shadow(0 0 15px rgba(243, 156, 18, 0.4));
-        margin-bottom: 1rem;
-    }
-
-    .app-title {
-        font-weight: 800;
-        font-size: 1.8rem;
-        background: linear-gradient(135deg, #f1c40f 0%, #e67e22 100%);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
-        margin: 0;
-        letter-spacing: -0.5px;
-    }
-
     .app-subtitle {
         color: #888;
         font-size: 0.9rem;
@@ -241,23 +224,10 @@
 
     <div class="login-card">
         <div class="logo-header">
-            <svg class="logo-svg" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
-                <circle cx="100" cy="100" r="95" fill="#2c2c2c" stroke="none"/>
-                <path d="M100 160 C130 160 150 130 150 100 C150 70 120 40 100 20 C80 40 50 70 50 100 C50 130 70 160 100 160 Z" fill="#d48ab1" />
-                <path d="M100 30 C110 10 130 20 120 -10 C140 10 150 40 130 60 L100 40 L70 60 C50 40 60 10 80 -10 C70 20 90 10 100 30" fill="#e74c3c">
-                    <animate attributeName="d" dur="3s" repeatCount="indefinite"
-                        values="M100 30 C110 10 130 20 120 -10 C140 10 150 40 130 60 L100 40 L70 60 C50 40 60 10 80 -10 C70 20 90 10 100 30;
-                                M100 25 C115 5 135 15 125 -15 C145 5 155 35 135 55 L100 35 L65 55 C45 35 55 5 75 -15 C65 15 85 5 100 25;
-                                M100 30 C110 10 130 20 120 -10 C140 10 150 40 130 60 L100 40 L70 60 C50 40 60 10 80 -10 C70 20 90 10 100 30" />
-                </path>
-                <path d="M100 35 C105 20 115 25 110 10 C120 20 125 40 115 50 L100 40 L85 50 C75 40 80 20 90 10 C85 25 95 20 100 35" fill="#f1c40f" />
-                <ellipse cx="80" cy="100" rx="8" ry="12" fill="white" />
-                <circle cx="82" cy="100" r="4" fill="black" />
-                <ellipse cx="120" cy="100" rx="8" ry="12" fill="white" />
-                <circle cx="118" cy="100" r="4" fill="black" />
-                <path d="M85 130 Q100 140 115 130" fill="none" stroke="black" stroke-width="3" stroke-linecap="round" />
-            </svg>
-            <h1 class="app-title">HotShallot</h1>
+            <div class="cyberpunk-logo" style="display: inline-flex; align-items: center; gap: 15px; margin-bottom: 1rem; margin-top: 20px; cursor: default; position: relative; z-index: 20;">
+                <img src="logo1.png" alt="Logo" style="height: 128px; margin-top: -50px; margin-bottom: -50px; margin-left: -20px;" />
+                <span style="font-size: 1.5rem;">HotShallot</span>
+            </div>
             <div class="app-subtitle">Cooking up code</div>
         </div>
 
