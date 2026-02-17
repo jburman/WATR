@@ -21,20 +21,40 @@ public class AuthController : ControllerBase
     private readonly HotShallotDbContext _db;
     private readonly IMemoryCache _cache;
     private readonly ILogger<AuthController> _logger;
+    private readonly IConfiguration _configuration;
 
-    public AuthController(PassKeyService passKeyService, DeviceCodeService deviceCodeService, HotShallotDbContext db, IMemoryCache cache, ILogger<AuthController> logger)
+    public AuthController(PassKeyService passKeyService, DeviceCodeService deviceCodeService, HotShallotDbContext db, IMemoryCache cache, ILogger<AuthController> logger, IConfiguration configuration)
     {
         _passKeyService = passKeyService;
         _deviceCodeService = deviceCodeService;
         _db = db;
         _cache = cache;
         _logger = logger;
+        _configuration = configuration;
+    }
+
+    private bool IsEmailAllowed(string email)
+    {
+        var allowed = _configuration.GetSection("AllowedSignups").Get<string[]>();
+        // If config section is missing or empty, assume all are allowed (or secure by default? Prompt implies "control who can signup").
+        // "If someone tries to signup with an email that's not in the list, then it should give them a generic 'Signups are currently closed' message"
+        // This implies strict filtering if the list exists. 
+        if (allowed == null || allowed.Length == 0) return true; 
+        
+        return allowed.Contains(email, StringComparer.OrdinalIgnoreCase);
     }
 
     [HttpPost("passkey/register-options")]
     public async Task<IActionResult> RegisterOptions([FromBody] RegisterOptionsRequest request)
     {
         _logger.LogInformation("RegisterOptions: Email={Email}", request.Email);
+        
+        if (!IsEmailAllowed(request.Email))
+        {
+            _logger.LogWarning("RegisterOptions: Email {Email} not in AllowedSignups", request.Email);
+            return BadRequest("Signups are currently closed.");
+        }
+
         try
         {
             var user = await _db.Users
@@ -74,6 +94,13 @@ public class AuthController : ControllerBase
     public async Task<IActionResult> Register([FromBody] AuthenticatorAttestationRawResponse response, [FromQuery] string email, [FromQuery] string displayName)
     {
         _logger.LogInformation("Register: Email={Email}, DisplayName={DisplayName}", email, displayName);
+        
+        if (!IsEmailAllowed(email))
+        {
+            _logger.LogWarning("Register: Email {Email} not in AllowedSignups", email);
+            return BadRequest("Signups are currently closed.");
+        }
+
         try
         {
             if (!_cache.TryGetValue($"reg_options_{email}", out CredentialCreateOptions? options) || options == null)
@@ -114,6 +141,13 @@ public class AuthController : ControllerBase
     public async Task<IActionResult> LoginOptions([FromBody] LoginOptionsRequest request)
     {
         _logger.LogInformation("LoginOptions: Email={Email}", request.Email);
+        
+        if (!IsEmailAllowed(request.Email))
+        {
+            _logger.LogWarning("LoginOptions: Email {Email} not in AllowedSignups", request.Email);
+            return BadRequest("Signups are currently closed."); // Generic message as requested
+        }
+
         try
         {
             var options = await _passKeyService.MakeAssertionOptionsAsync(request.Email);
