@@ -337,7 +337,7 @@
                 error = await optionsResponse.Content.ReadAsStringAsync();
                 try {
                      var errObj = System.Text.Json.JsonSerializer.Deserialize<ErrorResponse>(error);
-                     if (errObj != null) error = errObj.Message;
+                     if (errObj != null && !string.IsNullOrEmpty(errObj.Message)) error = errObj.Message;
                 } catch {}
                 return;
             }
@@ -400,7 +400,7 @@
                 error = await optionsResponse.Content.ReadAsStringAsync();
                 try {
                      var errObj = System.Text.Json.JsonSerializer.Deserialize<ErrorResponse>(error);
-                     if (errObj != null) error = errObj.Message;
+                     if (errObj != null && !string.IsNullOrEmpty(errObj.Message)) error = errObj.Message;
                 } catch {}
                 return;
             }

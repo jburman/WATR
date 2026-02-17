@@ -72,9 +72,42 @@ builder.Services.AddAuthorization(options =>
 // Configure FIDO2
 builder.Services.AddFido2(options =>
 {
-    options.ServerDomain = builder.Configuration["Fido2:ServerDomain"]!;
+    var serverDomain = builder.Configuration["Fido2:ServerDomain"];
+    var origin = builder.Configuration["Fido2:Origin"];
+
+    if (string.IsNullOrEmpty(serverDomain))
+    {
+        // Fallback for Azure App Service if WEBSITE_HOSTNAME is available
+        var websiteHostname = Environment.GetEnvironmentVariable("WEBSITE_HOSTNAME");
+        if (!string.IsNullOrEmpty(websiteHostname))
+        {
+            serverDomain = websiteHostname;
+        }
+        else
+        {
+            // Throwing here might crash startup, but it's better than obscure 500 errors later.
+            // However, to keep the app alive for at least health checks, maybe we log?
+            // Fido2 middleware requires valid options.
+            throw new InvalidOperationException("Fido2:ServerDomain configuration is missing.");
+        }
+    }
+
+    if (string.IsNullOrEmpty(origin))
+    {
+        // Fallback: construct from ServerDomain if possible
+        if (!string.IsNullOrEmpty(serverDomain))
+        {
+            origin = $"https://{serverDomain}";
+        }
+        else
+        {
+            throw new InvalidOperationException("Fido2:Origin configuration is missing.");
+        }
+    }
+
+    options.ServerDomain = serverDomain;
     options.ServerName = "HotShallot";
-    options.Origins = new HashSet<string> { builder.Configuration["Fido2:Origin"]! };
+    options.Origins = new HashSet<string> { origin };
 });
 
 builder.Services.AddScoped<PassKeyService>();

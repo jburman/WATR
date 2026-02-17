@@ -52,7 +52,7 @@ public class AuthController : ControllerBase
         if (!IsEmailAllowed(request.Email))
         {
             _logger.LogWarning("RegisterOptions: Email {Email} not in AllowedSignups", request.Email);
-            return BadRequest("Signups are currently closed.");
+            return BadRequest(new ErrorResponse { Error = "forbidden", Message = "Signups are currently closed." });
         }
 
         try
@@ -98,7 +98,7 @@ public class AuthController : ControllerBase
         if (!IsEmailAllowed(email))
         {
             _logger.LogWarning("Register: Email {Email} not in AllowedSignups", email);
-            return BadRequest("Signups are currently closed.");
+            return BadRequest(new ErrorResponse { Error = "forbidden", Message = "Signups are currently closed." });
         }
 
         try
@@ -145,7 +145,7 @@ public class AuthController : ControllerBase
         if (!IsEmailAllowed(request.Email))
         {
             _logger.LogWarning("LoginOptions: Email {Email} not in AllowedSignups", request.Email);
-            return BadRequest("Signups are currently closed."); // Generic message as requested
+            return BadRequest(new ErrorResponse { Error = "forbidden", Message = "Signups are currently closed." });
         }
 
         try
