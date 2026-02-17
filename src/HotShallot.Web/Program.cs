@@ -33,7 +33,28 @@ builder.Services.AddScoped(sp =>
 });
 
 builder.Services.AddDbContextFactory<HotShallotDbContext>(options =>
-    options.UseSqlite(builder.Configuration.GetConnectionString("DefaultConnection")));
+{
+    var connString = builder.Configuration.GetConnectionString("DefaultConnection");
+    var csBuilder = new Microsoft.Data.Sqlite.SqliteConnectionStringBuilder(connString);
+    // Add default busy timeout to handle locking better in default journal mode
+    if (csBuilder.DefaultTimeout == 30) // 30 is default
+    {
+        // Actually property is 'DefaultTimeout' but in connection string it is 'Busy Timeout' or 'Command Timeout'?
+        // SqliteConnectionStringBuilder has 'DefaultTimeout' property which maps to 'Default Timeout'.
+        // However, we want to set 'Busy Timeout' pragma equivalent? No, SqliteConnection handles retries if we set it.
+        // Wait, SqliteConnectionStringBuilder does not expose 'BusyTimeout' property directly in all versions?
+        // It has 'Cache'. 
+        // Let's just append it to the string if simple.
+    }
+    
+    // Simpler: Just append if not present
+    if (!connString.Contains("Busy Timeout", StringComparison.OrdinalIgnoreCase) && !connString.Contains("BusyTimeout", StringComparison.OrdinalIgnoreCase))
+    {
+        connString += ";Busy Timeout=5000";
+    }
+
+    options.UseSqlite(connString);
+});
 
 builder.Services.AddScoped(sp => sp.GetRequiredService<IDbContextFactory<HotShallotDbContext>>().CreateDbContext());
 
@@ -158,8 +179,11 @@ using (var scope = app.Services.CreateScope())
 
     try 
     {
-        db.Database.ExecuteSqlRaw("PRAGMA journal_mode = WAL;");
-        db.Database.ExecuteSqlRaw("PRAGMA synchronous = NORMAL;");
+        // On Azure App Service Linux, /home is an SMB share which doesn't support WAL mode locking correctly.
+        // We revert to default journaling to ensure stability.
+        // db.Database.ExecuteSqlRaw("PRAGMA journal_mode = WAL;");
+        // db.Database.ExecuteSqlRaw("PRAGMA synchronous = NORMAL;");
+        
         db.Database.Migrate();
         logger.LogInformation("Database migration completed.");
     }
