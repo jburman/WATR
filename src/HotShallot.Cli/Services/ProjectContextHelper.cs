@@ -23,10 +23,10 @@ public class ProjectContextHelper
         }
 
         // 2. Check local context
-        var localProject = _config.GetLocalProjectName();
-        if (!string.IsNullOrEmpty(localProject))
+        var localSettings = _config.GetLocalSettings();
+        if (localSettings != null && !string.IsNullOrEmpty(localSettings.ProjectName))
         {
-            return localProject;
+            return localSettings.ProjectName;
         }
 
         // 3. Prompt user
@@ -45,8 +45,11 @@ public class ProjectContextHelper
                 return null;
             }
 
-            // 5. Save
-            _config.SaveLocalProjectName(project.Name);
+            // 5. Save (preserve existing server url if any)
+            var newSettings = localSettings ?? new LocalProjectSettings();
+            newSettings.ProjectName = project.Name;
+            _config.SaveLocalSettings(newSettings);
+            
             AnsiConsole.MarkupLine($"[green]Linked directory to project: {project.Name}[/]");
             return project.Name;
         }

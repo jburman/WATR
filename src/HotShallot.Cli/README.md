@@ -50,6 +50,14 @@ shallot project set "MyProjectName"
 ```
 Once set, all subsequent commands will apply to this project unless overridden.
 
+## Initialization
+
+Before using the CLI in a new folder, you must initialize it with the server URL. This creates a local configuration file (`.shallot/settings.json`) that links the directory to a specific project context.
+
+```bash
+shallot init "https://hotshallot.azurewebsites.net"
+```
+
 ## Task Management
 
 ### List Tasks

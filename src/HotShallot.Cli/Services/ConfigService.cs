@@ -11,14 +11,14 @@ public class ConfigService
     public ConfigService()
     {
         var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-        _configPath = Path.Combine(home, ".hotshallot", ConfigFileName);
+        _configPath = Path.Combine(home, ".shallot", ConfigFileName);
     }
 
     public ConfigData Load()
     {
         if (!File.Exists(_configPath))
         {
-            return new ConfigData { ServerUrl = "https://localhost:5001" };
+            return new ConfigData();
         }
 
         var json = File.ReadAllText(_configPath);
@@ -34,7 +34,7 @@ public class ConfigService
         File.WriteAllText(_configPath, json);
     }
 
-    public string? GetLocalProjectName()
+    public LocalProjectSettings? GetLocalSettings()
     {
         var dir = new DirectoryInfo(Directory.GetCurrentDirectory());
         while (dir != null)
@@ -45,11 +45,7 @@ public class ConfigService
                 try
                 {
                     var json = File.ReadAllText(settingsPath);
-                    var settings = JsonSerializer.Deserialize(json, CliJsonContext.Default.LocalProjectSettings);
-                    if (!string.IsNullOrWhiteSpace(settings?.ProjectName))
-                    {
-                        return settings.ProjectName;
-                    }
+                    return JsonSerializer.Deserialize(json, CliJsonContext.Default.LocalProjectSettings);
                 }
                 catch
                 {
@@ -61,12 +57,11 @@ public class ConfigService
         return null;
     }
 
-    public void SaveLocalProjectName(string projectName)
+    public void SaveLocalSettings(LocalProjectSettings settings)
     {
         var dir = Path.Combine(Directory.GetCurrentDirectory(), ".shallot");
         if (!Directory.Exists(dir)) Directory.CreateDirectory(dir);
 
-        var settings = new LocalProjectSettings { ProjectName = projectName };
         var json = JsonSerializer.Serialize(settings, CliJsonContext.Default.LocalProjectSettings);
         File.WriteAllText(Path.Combine(dir, "settings.json"), json);
     }
@@ -74,8 +69,11 @@ public class ConfigService
 
 public class ConfigData
 {
-    public string ServerUrl { get; set; } = string.Empty;
-    public string? DefaultProject { get; set; } // Deprecated, kept for backward compat if needed
+    // Global config still used for tokens/default project fallback? 
+    // The request implies ServerUrl moves to local. 
+    // But we might want to keep Global Config for Auth Tokens.
+    public string ServerUrl { get; set; } = string.Empty; 
+    public string? DefaultProject { get; set; } 
 }
 
 public class LocalProjectSettings

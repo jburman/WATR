@@ -33,7 +33,9 @@ public class ProjectSetCommand : AsyncCommand<ProjectSetCommand.Settings>
             return 3;
         }
 
-        _config.SaveLocalProjectName(project.Name);
+        var localSettings = _config.GetLocalSettings() ?? new LocalProjectSettings();
+        localSettings.ProjectName = project.Name;
+        _config.SaveLocalSettings(localSettings);
 
         AnsiConsole.MarkupLine($"[green]✅ Linked current directory to project: {project.Name}[/]");
         return 0;

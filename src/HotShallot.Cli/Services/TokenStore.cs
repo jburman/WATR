@@ -13,7 +13,7 @@ public class TokenStore
     public TokenStore()
     {
         var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-        _tokenPath = Path.Combine(home, ".hotshallot", TokenFileName);
+        _tokenPath = Path.Combine(home, ".shallot", TokenFileName);
     }
 
     public void SaveTokens(string accessToken, string refreshToken)

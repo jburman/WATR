@@ -19,7 +19,21 @@ public class ApiClient
         _tokenStore = tokenStore;
         
         var configData = _config.Load();
-        _http = new HttpClient { BaseAddress = new Uri(configData.ServerUrl) };
+        var serverUrl = configData.ServerUrl;
+
+        if (string.IsNullOrWhiteSpace(serverUrl))
+        {
+            // Allow fallback to global config only if local is missing?
+            // User requested: "remove the code that defaults the server url to localhost... check for the settings file ... fail with a message"
+            // So we strictly enforce local or explicit config.
+            
+            // However, existing global config might be used as a fallback for users who haven't migrated?
+            // "do not use the one from the user's profile anymore" - explicit instruction.
+            
+            throw new Exception("Server URL not configured. Please run 'shallot init <SERVER_URL>'.");
+        }
+
+        _http = new HttpClient { BaseAddress = new Uri(serverUrl) };
         
         var tokens = _tokenStore.LoadTokens();
         if (tokens != null)

@@ -252,6 +252,7 @@ Since Blazor Server already maintains a persistent SignalR connection to the ser
 *   When a default project is set, the `--project` flag can be omitted from all commands.
 
 ### 7.3 Commands
+*   `shallot init <SERVER_URL>`: Initializes the local directory with a connection to the server. Required before running other commands.
 *   `shallot login`: Initiates device code flow.
 *   `shallot logout`: Clears local credentials.
 *   `shallot status`: Shows logged-in user, current project context, and summary counts (open/in-progress/blocked tasks).

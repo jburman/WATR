@@ -27,6 +27,8 @@ static async Task<int> CreateAndRunApp(ITypeRegistrar registrar, string[] args)
     {
         config.SetApplicationName("shallot");
         
+            config.AddCommand<InitCommand>("init");
+
             config.AddCommand<LoginCommand>("login");
         
             config.AddCommand<LogoutCommand>("logout");
