@@ -203,9 +203,8 @@
         }
     }
 
-    private async Task Logout()
+    private void Logout()
     {
-        await Http.PostAsync("api/auth/logout", null);
-        Navigation.NavigateTo("/login", true);
+        Navigation.NavigateTo("api/auth/logout", true);
     }
 }

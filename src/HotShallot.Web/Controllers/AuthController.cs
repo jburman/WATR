@@ -235,9 +235,17 @@ public class AuthController : ControllerBase
     [HttpPost("logout")]
     public async Task<IActionResult> Logout()
     {
-        _logger.LogInformation("Logout: User={User}", User.FindFirstValue(ClaimTypes.NameIdentifier));
+        _logger.LogInformation("Logout (POST): User={User}", User.FindFirstValue(ClaimTypes.NameIdentifier));
         await HttpContext.SignOutAsync("Cookies");
         return Ok();
+    }
+
+    [HttpGet("logout")]
+    public async Task<IActionResult> LogoutGet()
+    {
+        _logger.LogInformation("Logout (GET): User={User}", User.FindFirstValue(ClaimTypes.NameIdentifier));
+        await HttpContext.SignOutAsync("Cookies");
+        return Redirect("/login");
     }
 }
 
