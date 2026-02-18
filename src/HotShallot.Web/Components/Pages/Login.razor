@@ -307,6 +307,9 @@
     private string error = "";
     private bool isBusy = false;
 
+    [SupplyParameterFromQuery]
+    public string? ReturnUrl { get; set; }
+
     private void SwitchToLogin()
     {
         isLogin = true;
@@ -361,7 +364,9 @@
             try
             {
                 await JSRuntime.InvokeVoidAsync("performLogin", $"api/auth/passkey/login?email={Uri.EscapeDataString(loginEmail)}", assertionJson);
-                Navigation.NavigateTo("/", true);
+                
+                var target = !string.IsNullOrEmpty(ReturnUrl) ? ReturnUrl : "/";
+                Navigation.NavigateTo(target, true);
             }
             catch (Exception ex)
             {

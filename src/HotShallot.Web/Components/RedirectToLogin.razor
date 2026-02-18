@@ -1,0 +1,17 @@
+@inject NavigationManager Navigation
+
+@code {
+    protected override void OnInitialized()
+    {
+        var returnUrl = Navigation.Uri;
+        // Navigation.Uri gives absolute URI. We might want just path + query?
+        // Uri.EscapeDataString logic.
+        
+        // If we are already at login, don't redirect (loop).
+        // But NotAuthorized only renders if user is not authorized for the requested page.
+        // Login page allows anonymous, so this shouldn't trigger on Login page itself.
+        
+        var loginUrl = $"/login?returnUrl={Uri.EscapeDataString(returnUrl)}";
+        Navigation.NavigateTo(loginUrl, true);
+    }
+}
