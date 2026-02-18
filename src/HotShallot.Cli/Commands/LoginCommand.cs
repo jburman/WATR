@@ -25,10 +25,12 @@ public class LoginCommand : AsyncCommand<LoginCommand.Settings>
     {
         var configData = _config.Load();
         var code = GenerateCode();
+        var serverUrl = configData.ServerUrl.TrimEnd('/');
+        var deviceUrl = $"{serverUrl}/device";
 
         AnsiConsole.MarkupLine($"[yellow]Initiating login...[/]");
 
-        using var http = new HttpClient { BaseAddress = new Uri(configData.ServerUrl) };
+        using var http = new HttpClient { BaseAddress = new Uri(serverUrl + "/") };
         var initRequest = new DeviceLoginInitRequest { Code = code };
         var initResponse = await http.PostAsJsonAsync("api/auth/device-login-init", initRequest, AppJsonContext.Default.DeviceLoginInitRequest);
         
@@ -43,7 +45,7 @@ public class LoginCommand : AsyncCommand<LoginCommand.Settings>
             new Text(""),
             new Text(code, new Style(Color.Yellow, decoration: Decoration.Bold)).Centered(),
             new Text(""),
-            new Text($"{configData.ServerUrl}/device").Centered()
+            new Text(deviceUrl).Centered()
         ));
         panel.Header = new PanelHeader(" HotShallot Login ");
         panel.Border = BoxBorder.Rounded;
@@ -52,7 +54,7 @@ public class LoginCommand : AsyncCommand<LoginCommand.Settings>
         // Try to open browser
         try
         {
-            Process.Start(new ProcessStartInfo($"{configData.ServerUrl}/device") { UseShellExecute = true });
+            Process.Start(new ProcessStartInfo(deviceUrl) { UseShellExecute = true });
         }
         catch { }
 

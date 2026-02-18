@@ -33,6 +33,11 @@ public class ApiClient
             throw new Exception("Server URL not configured. Please run 'shallot init <SERVER_URL>'.");
         }
 
+        if (!serverUrl.EndsWith("/"))
+        {
+            serverUrl += "/";
+        }
+
         _http = new HttpClient { BaseAddress = new Uri(serverUrl) };
         
         var tokens = _tokenStore.LoadTokens();
@@ -44,7 +49,7 @@ public class ApiClient
 
     public async Task<T> GetAsync<T>(string path)
     {
-        var response = await _http.GetAsync(path);
+        var response = await _http.GetAsync(path.TrimStart('/'));
         await EnsureSuccess(response);
         var typeInfo = (JsonTypeInfo<T>)AppJsonContext.Default.GetTypeInfo(typeof(T))!;
         return (await response.Content.ReadFromJsonAsync(typeInfo))!;
@@ -59,7 +64,7 @@ public class ApiClient
         }
 
         using var jsonContent = JsonContent.Create(body, bodyTypeInfo);
-        var response = await _http.PostAsync(path, jsonContent);
+        var response = await _http.PostAsync(path.TrimStart('/'), jsonContent);
         
         await EnsureSuccess(response);
         var typeInfo = (JsonTypeInfo<T>)AppJsonContext.Default.GetTypeInfo(typeof(T))!;
@@ -79,7 +84,7 @@ public class ApiClient
             content = JsonContent.Create(body, bodyTypeInfo);
         }
         
-        var response = await _http.PostAsync(path, content);
+        var response = await _http.PostAsync(path.TrimStart('/'), content);
         content?.Dispose();
         await EnsureSuccess(response);
     }
@@ -92,7 +97,7 @@ public class ApiClient
              throw new InvalidOperationException($"Type {body.GetType()} is not registered in AppJsonContext.");
         }
 
-        using var request = new HttpRequestMessage(HttpMethod.Patch, path);
+        using var request = new HttpRequestMessage(HttpMethod.Patch, path.TrimStart('/'));
         request.Content = JsonContent.Create(body, bodyTypeInfo);
         var response = await _http.SendAsync(request);
         await EnsureSuccess(response);
