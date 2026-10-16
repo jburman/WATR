@@ -1,6 +1,6 @@
-# HotShallot — Implementation Plan
+# WATR — Implementation Plan
 
-This document is a step-by-step implementation guide for building HotShallot. It follows the phases described in `design.md` and breaks each phase into granular, checkable tasks. Complete them in order — each step builds on the previous one.
+This document is a step-by-step implementation guide for building WATR (Where's All the Records). It follows the phases described in `design.md` and breaks each phase into granular, checkable tasks. Complete them in order — each step builds on the previous one.
 
 > **Prerequisites:** .NET 10 SDK installed, Visual Studio 2022+ or VS Code with C# Dev Kit, Git, an Azure account (for deployment later).
 
@@ -15,38 +15,38 @@ The goal of this phase is to create the .NET solution structure, configure the d
 - [ ] Create a new empty directory structure and initialize git (if not already done).
 - [ ] Create the solution file:
   ```
-  dotnet new sln -n HotShallot
+  dotnet new sln -n WATR
   ```
 - [ ] Create the **Web/API project** (this is the main host — it serves both the Blazor UI and the REST API):
   ```
-  dotnet new blazor -n HotShallot.Web -o src/HotShallot.Web --interactivity Server
+  dotnet new blazor -n WATR.Web -o src/WATR.Web --interactivity Server
   ```
 - [ ] Create the **Shared library** (contains entity models, enums, DTOs shared between Web and CLI):
   ```
-  dotnet new classlib -n HotShallot.Shared -o src/HotShallot.Shared
+  dotnet new classlib -n WATR.Shared -o src/WATR.Shared
   ```
 - [ ] Create the **CLI project**:
   ```
-  dotnet new console -n HotShallot.Cli -o src/HotShallot.Cli
+  dotnet new console -n WATR.Cli -o src/WATR.Cli
   ```
 - [ ] Add all projects to the solution:
   ```
-  dotnet sln add src/HotShallot.Web
-  dotnet sln add src/HotShallot.Shared
-  dotnet sln add src/HotShallot.Cli
+  dotnet sln add src/WATR.Web
+  dotnet sln add src/WATR.Shared
+  dotnet sln add src/WATR.Cli
   ```
 - [ ] Add project references:
-  - `HotShallot.Web` → references `HotShallot.Shared`
-  - `HotShallot.Cli` → references `HotShallot.Shared`
+  - `WATR.Web` → references `WATR.Shared`
+  - `WATR.Cli` → references `WATR.Shared`
   ```
-  dotnet add src/HotShallot.Web reference src/HotShallot.Shared
-  dotnet add src/HotShallot.Cli reference src/HotShallot.Shared
+  dotnet add src/WATR.Web reference src/WATR.Shared
+  dotnet add src/WATR.Cli reference src/WATR.Shared
   ```
 - [ ] Verify the solution builds: `dotnet build`
 
 ### 1.2 Install NuGet Packages
 
-- [ ] **HotShallot.Web** — install these packages:
+- [ ] **WATR.Web** — install these packages:
   - `Microsoft.EntityFrameworkCore.Sqlite` (EF Core SQLite provider)
   - `Microsoft.EntityFrameworkCore.Design` (for migrations tooling)
   - `Radzen.Blazor` (UI component library)
@@ -54,30 +54,30 @@ The goal of this phase is to create the .NET solution structure, configure the d
   - `Microsoft.AspNetCore.Authentication.JwtBearer` (JWT auth for the API)
   - `Microsoft.Extensions.Diagnostics.HealthChecks` (health check middleware)
   ```
-  cd src/HotShallot.Web
+  cd src/WATR.Web
   dotnet add package Microsoft.EntityFrameworkCore.Sqlite
   dotnet add package Microsoft.EntityFrameworkCore.Design
   dotnet add package Radzen.Blazor
   dotnet add package Fido2
   dotnet add package Microsoft.AspNetCore.Authentication.JwtBearer
   ```
-- [ ] **HotShallot.Cli** — install these packages:
+- [ ] **WATR.Cli** — install these packages:
   - `Spectre.Console` (rich terminal UI)
   - `Spectre.Console.Cli` (command-line argument parsing)
   - `System.IdentityModel.Tokens.Jwt` (for reading/validating JWT tokens locally)
   ```
-  cd src/HotShallot.Cli
+  cd src/WATR.Cli
   dotnet add package Spectre.Console
   dotnet add package Spectre.Console.Cli
   dotnet add package System.IdentityModel.Tokens.Jwt
   ```
 - [ ] Verify the solution still builds: `dotnet build`
 
-### 1.3 Define Enums (in HotShallot.Shared)
+### 1.3 Define Enums (in WATR.Shared)
 
 - [ ] Create `Enums/TaskStatus.cs`:
   ```csharp
-  namespace HotShallot.Shared.Enums;
+  namespace WATR.Shared.Enums;
 
   public enum TaskItemStatus
   {
@@ -92,7 +92,7 @@ The goal of this phase is to create the .NET solution structure, configure the d
 
 - [ ] Create `Enums/TaskPriority.cs`:
   ```csharp
-  namespace HotShallot.Shared.Enums;
+  namespace WATR.Shared.Enums;
 
   public enum TaskPriority
   {
@@ -106,7 +106,7 @@ The goal of this phase is to create the .NET solution structure, configure the d
 
 - [ ] Create `Enums/ProjectRole.cs`:
   ```csharp
-  namespace HotShallot.Shared.Enums;
+  namespace WATR.Shared.Enums;
 
   public enum ProjectRole
   {
@@ -115,9 +115,9 @@ The goal of this phase is to create the .NET solution structure, configure the d
   }
   ```
 
-### 1.4 Define Entity Models (in HotShallot.Shared)
+### 1.4 Define Entity Models (in WATR.Shared)
 
-Create each entity class in a `Models/` folder inside `HotShallot.Shared`. Each class maps directly to a database table described in the design document.
+Create each entity class in a `Models/` folder inside `WATR.Shared`. Each class maps directly to a database table described in the design document.
 
 - [ ] Create `Models/User.cs` with properties: `Id` (Guid), `Email` (string), `DisplayName` (string), `CreatedAt` (DateTime). Add navigation properties: `ICollection<UserPassKey> PassKeys`, `ICollection<ProjectMember> ProjectMemberships`.
 
@@ -133,9 +133,9 @@ Create each entity class in a `Models/` folder inside `HotShallot.Shared`. Each 
 - [ ] Create `Models/TaskNote.cs` with properties: `Id` (Guid), `TaskId` (Guid), `AuthorUserId` (Guid), `Content` (string), `CreatedAt` (DateTime), `UpdatedAt` (DateTime?). Add navigation properties: `TaskItem Task`, `User Author`.
   > **Note:** `Content` stores Markdown text.
 
-### 1.5 Create the DbContext (in HotShallot.Web)
+### 1.5 Create the DbContext (in WATR.Web)
 
-- [ ] Create `Data/HotShallotDbContext.cs` in the Web project.
+- [ ] Create `Data/WatrDbContext.cs` in the Web project.
 - [ ] Define `DbSet<>` properties for all six entities: `Users`, `UserPassKeys`, `Projects`, `ProjectMembers`, `TaskItems`, `TaskNotes`.
 - [ ] Override `OnModelCreating` to configure:
   - **User:** `Email` has a unique index, `CreatedAt` defaults to `DateTime.UtcNow`.
@@ -148,13 +148,13 @@ Create each entity class in a `Models/` folder inside `HotShallot.Shared`. Each 
   ```json
   {
     "ConnectionStrings": {
-      "DefaultConnection": "Data Source=App_Data/hotshallot.db"
+      "DefaultConnection": "Data Source=App_Data/WATR.db"
     }
   }
   ```
-- [ ] Register `HotShallotDbContext` in `Program.cs`:
+- [ ] Register `WatrDbContext` in `Program.cs`:
   ```csharp
-  builder.Services.AddDbContext<HotShallotDbContext>(options =>
+  builder.Services.AddDbContext<WatrDbContext>(options =>
       options.UseSqlite(builder.Configuration.GetConnectionString("DefaultConnection")));
   ```
 - [ ] Create the `App_Data` directory in the Web project (add a `.gitkeep` file so git tracks the empty folder).
@@ -165,7 +165,7 @@ Create each entity class in a `Models/` folder inside `HotShallot.Shared`. Each 
   ```csharp
   using (var scope = app.Services.CreateScope())
   {
-      var db = scope.ServiceProvider.GetRequiredService<HotShallotDbContext>();
+      var db = scope.ServiceProvider.GetRequiredService<WatrDbContext>();
       db.Database.ExecuteSqlRaw("PRAGMA journal_mode = WAL;");
       db.Database.ExecuteSqlRaw("PRAGMA synchronous = NORMAL;");
   }
@@ -179,7 +179,7 @@ Create each entity class in a `Models/` folder inside `HotShallot.Shared`. Each 
   ```
 - [ ] Generate the initial migration:
   ```
-  cd src/HotShallot.Web
+  cd src/WATR.Web
   dotnet ef migrations add InitialCreate
   ```
 - [ ] Verify the migration files were created in `Migrations/` folder.
@@ -189,14 +189,14 @@ Create each entity class in a `Models/` folder inside `HotShallot.Shared`. Each 
   ```
 - [ ] Run the Web project and verify the SQLite database file is created in `App_Data/`:
   ```
-  dotnet run --project src/HotShallot.Web
+  dotnet run --project src/WATR.Web
   ```
 - [ ] Verify the database has all expected tables (use a SQLite browser tool or the `sqlite3` CLI).
 
 ### 1.8 Build Verification
 
 - [ ] Ensure `dotnet build` succeeds with no warnings for the entire solution.
-- [ ] Ensure `dotnet run --project src/HotShallot.Web` starts without errors and the database is created.
+- [ ] Ensure `dotnet run --project src/WATR.Web` starts without errors and the database is created.
 
 ---
 
@@ -225,8 +225,8 @@ This phase implements two authentication flows: Passkey login for the web UI and
       {
           ValidateIssuer = true,
           ValidateAudience = true,
-          ValidIssuer = "HotShallot",
-          ValidAudience = "HotShallot",
+          ValidIssuer = "WATR",
+          ValidAudience = "WATR",
           IssuerSigningKey = new SymmetricSecurityKey(
               Encoding.UTF8.GetBytes(builder.Configuration["Jwt:SigningKey"]!))
       };
@@ -250,7 +250,7 @@ This phase implements two authentication flows: Passkey login for the web UI and
   builder.Services.AddFido2(options =>
   {
       options.ServerDomain = builder.Configuration["Fido2:ServerDomain"];
-      options.ServerName = "HotShallot";
+      options.ServerName = "WATR";
       options.Origins = new HashSet<string> { builder.Configuration["Fido2:Origin"]! };
   });
   ```
@@ -355,7 +355,7 @@ This allows the CLI to obtain a JWT by having the user approve a code in the web
 
 This phase builds out the complete task management API. The API is used by both the Blazor frontend and the CLI.
 
-### 3.1 Define DTOs (in HotShallot.Shared)
+### 3.1 Define DTOs (in WATR.Shared)
 
 DTOs (Data Transfer Objects) are the JSON shapes sent to and from the API. They decouple the database entities from the API contract.
 
@@ -439,7 +439,7 @@ DTOs (Data Transfer Objects) are the JSON shapes sent to and from the API. They 
 - [ ] Register health checks in `Program.cs`:
   ```csharp
   builder.Services.AddHealthChecks()
-      .AddDbContextCheck<HotShallotDbContext>();
+      .AddDbContextCheck<WatrDbContext>();
   ```
 - [ ] Map the health endpoint (before auth middleware so it's unauthenticated):
   ```csharp
@@ -465,7 +465,7 @@ This phase adds live push updates so the web dashboard refreshes automatically w
   ```csharp
   using Microsoft.AspNetCore.SignalR;
 
-  namespace HotShallot.Web.Hubs;
+  namespace WATR.Web.Hubs;
 
   public class TaskHub : Hub
   {
@@ -529,7 +529,7 @@ This phase builds the Blazor Server frontend with Radzen components. The dashboa
 ### 5.2 Create the Main Layout
 
 - [ ] Edit `MainLayout.razor`:
-  - Top navigation bar with: Logo/app name ("HotShallot 🌶️‍🔥"), a project selector dropdown, user display name, and a logout button.
+  - Top navigation bar with: Logo/app name ("WATR [Data Cube]"), a project selector dropdown, user display name, and a logout button.
   - Use `RadzenHeader`, `RadzenBody`, `RadzenLayout` components for structure.
 - [ ] Apply dark theme by default (the `material-dark.css` from Step 5.1 handles this).
 - [ ] Implement the project selector dropdown:
@@ -539,7 +539,7 @@ This phase builds the Blazor Server frontend with Radzen components. The dashboa
 
 ### 5.3 Create a Data Access Service Layer
 
-Since Blazor Server runs on the server, it can access the `HotShallotDbContext` directly — no need to call the REST API from Blazor.
+Since Blazor Server runs on the server, it can access the `WatrDbContext` directly — no need to call the REST API from Blazor.
 
 - [ ] Create `Services/TaskService.cs` with methods:
   - `GetTasksAsync(Guid projectId, TaskItemStatus? statusFilter, bool? myTasksOnly, Guid currentUserId, int page, int pageSize)` — queries tasks with filtering, sorting, pagination. Returns `PaginatedResponse<TaskItemSummaryDto>`.
@@ -620,7 +620,7 @@ Since Blazor Server runs on the server, it can access the `HotShallotDbContext` 
 
 - [ ] Create `Pages/Login.razor` (this should already be partially done from Phase 2).
 - [ ] Ensure it's excluded from the authorization requirement (`@attribute [AllowAnonymous]`).
-- [ ] Style it as a centered card with the HotShallot logo, email input, and "Login with Passkey" / "Register" buttons.
+- [ ] Style it as a centered card with the WATR logo, email input, and "Login with Passkey" / "Register" buttons.
 
 ### 5.8 Build the Device Login Page
 
@@ -651,13 +651,13 @@ Since Blazor Server runs on the server, it can access the `HotShallotDbContext` 
 
 ---
 
-## Phase 6: CLI Tool (`shallot`)
+## Phase 6: CLI Tool (`watr`)
 
-This phase builds the cross-platform CLI tool that agents and humans use to interact with HotShallot from the terminal.
+This phase builds the cross-platform CLI tool that agents and humans use to interact with WATR from the terminal.
 
 ### 6.1 Set Up CLI Project Structure
 
-- [ ] Configure `HotShallot.Cli.csproj` for Native AOT:
+- [ ] Configure `WATR.Cli.csproj` for Native AOT:
   ```xml
   <PropertyGroup>
       <PublishAot>true</PublishAot>
@@ -669,7 +669,7 @@ This phase builds the cross-platform CLI tool that agents and humans use to inte
   var app = new CommandApp();
   app.Configure(config =>
   {
-      config.SetApplicationName("shallot");
+      config.SetApplicationName("watr");
       // Commands will be registered here
   });
   return app.Run(args);
@@ -678,11 +678,11 @@ This phase builds the cross-platform CLI tool that agents and humans use to inte
 ### 6.2 Implement Configuration & Token Storage
 
 - [ ] Create `Services/ConfigService.cs`:
-  - Config file location: `~/.hotshallot/config.json` (cross-platform).
+  - Config file location: `~/.WATR/config.json` (cross-platform).
   - Stores: `ServerUrl` (string), `DefaultProject` (string?).
   - Methods: `Load()`, `Save()`, `GetServerUrl()`, `SetDefaultProject(string name)`, `GetDefaultProject()`.
 - [ ] Create `Services/TokenStore.cs`:
-  - **Windows:** Use `System.Security.Cryptography.ProtectedData` (DPAPI) to encrypt tokens at rest. Store encrypted blob in `~/.hotshallot/tokens.dat`.
+  - **Windows:** Use `System.Security.Cryptography.ProtectedData` (DPAPI) to encrypt tokens at rest. Store encrypted blob in `~/.WATR/tokens.dat`.
   - Methods: `SaveTokens(string accessToken, string refreshToken)`, `LoadTokens()` → `(string? accessToken, string? refreshToken)`, `ClearTokens()`.
   - Check if the access token is expired by reading the `exp` claim. If expired, return null for the access token but keep the refresh token.
 
@@ -708,7 +708,7 @@ This phase builds the cross-platform CLI tool that agents and humans use to inte
     │                                          │
     │              1234-5678                    │
     │                                          │
-    │  https://hotshallot.azurewebsites.net/   │
+    │  https://WATR.azurewebsites.net/   │
     └──────────────────────────────────────────┘
     ```
   - Attempt to open the browser to the device login URL using `Process.Start`.
@@ -835,19 +835,19 @@ This phase builds the cross-platform CLI tool that agents and humans use to inte
 
 ### 6.16 Build Verification
 
-- [ ] Build the CLI: `dotnet build src/HotShallot.Cli`
-- [ ] Run `shallot login` → complete the device flow → verify tokens are stored.
-- [ ] Run `shallot project set <name>` → verify config is saved.
-- [ ] Run `shallot status` → verify output.
-- [ ] Run `shallot add "Test task" --body "Hello world"` → verify task is created.
-- [ ] Run `shallot list` → verify the task appears.
-- [ ] Run `shallot claim <id>` → verify assignment.
-- [ ] Run `shallot note <id> "Working on it"` → verify note is added.
-- [ ] Run `shallot done <id>` → verify completion.
-- [ ] Run `shallot show <id>` → verify full details.
-- [ ] Run `shallot list --json` → verify JSON output.
-- [ ] Run `shallot logout` → verify tokens are cleared.
-- [ ] Publish AOT: `dotnet publish src/HotShallot.Cli -c Release -r win-x64` → verify single-file output.
+- [ ] Build the CLI: `dotnet build src/WATR.Cli`
+- [ ] Run `watr login` → complete the device flow → verify tokens are stored.
+- [ ] Run `watr project set <name>` → verify config is saved.
+- [ ] Run `watr status` → verify output.
+- [ ] Run `watr add "Test task" --body "Hello world"` → verify task is created.
+- [ ] Run `watr list` → verify the task appears.
+- [ ] Run `watr claim <id>` → verify assignment.
+- [ ] Run `watr note <id> "Working on it"` → verify note is added.
+- [ ] Run `watr done <id>` → verify completion.
+- [ ] Run `watr show <id>` → verify full details.
+- [ ] Run `watr list --json` → verify JSON output.
+- [ ] Run `watr logout` → verify tokens are cleared.
+- [ ] Publish AOT: `dotnet publish src/WATR.Cli -c Release -r win-x64` → verify single-file output.
 
 ---
 
@@ -877,16 +877,16 @@ This phase sets up CI/CD, logging, and deploys the application to Azure.
 
 ### 7.2 Create Azure Resources
 
-- [ ] Create an Azure Resource Group (e.g., `rg-hotshallot`).
+- [ ] Create an Azure Resource Group (e.g., `rg-WATR`).
 - [ ] Create an Azure App Service Plan (B1 tier, Linux).
 - [ ] Create an Azure Web App targeting .NET 10.
 - [ ] Create an Application Insights instance and link it to the Web App.
 - [ ] Configure App Settings in the Azure portal:
   - `Jwt__SigningKey` = a strong random 64+ character string.
-  - `Fido2__ServerDomain` = your app's domain (e.g., `hotshallot.azurewebsites.net`).
-  - `Fido2__Origin` = `https://hotshallot.azurewebsites.net`.
+  - `Fido2__ServerDomain` = your app's domain (e.g., `WATR.azurewebsites.net`).
+  - `Fido2__Origin` = `https://WATR.azurewebsites.net`.
   - `ApplicationInsights__ConnectionString` = from the AI resource.
-  - `ConnectionStrings__DefaultConnection` = `Data Source=/home/data/hotshallot.db`.
+  - `ConnectionStrings__DefaultConnection` = `Data Source=/home/data/WATR.db`.
 
 ### 7.3 Create GitHub Actions CI/CD Pipeline
 
@@ -909,10 +909,10 @@ This phase sets up CI/CD, logging, and deploys the application to Azure.
         - run: dotnet restore
         - run: dotnet build --no-restore --configuration Release
         - run: dotnet test --no-build --configuration Release
-        - run: dotnet publish src/HotShallot.Web -c Release -o ./publish/web
+        - run: dotnet publish src/WATR.Web -c Release -o ./publish/web
         - uses: azure/webapps-deploy@v3
           with:
-            app-name: 'hotshallot'
+            app-name: 'WATR'
             publish-profile: ${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE }}
             package: ./publish/web
 
@@ -927,11 +927,11 @@ This phase sets up CI/CD, logging, and deploys the application to Azure.
         - uses: actions/setup-dotnet@v4
           with:
             dotnet-version: '10.0.x'
-        - run: dotnet publish src/HotShallot.Cli -c Release -r ${{ matrix.rid }}
+        - run: dotnet publish src/WATR.Cli -c Release -r ${{ matrix.rid }}
         - uses: actions/upload-artifact@v4
           with:
-            name: shallot-${{ matrix.rid }}
-            path: src/HotShallot.Cli/bin/Release/net10.0/${{ matrix.rid }}/publish/
+            name: watr-${{ matrix.rid }}
+            path: src/WATR.Cli/bin/Release/net10.0/${{ matrix.rid }}/publish/
   ```
 - [ ] Add the Azure Web App publish profile as a GitHub secret (`AZURE_WEBAPP_PUBLISH_PROFILE`).
 - [ ] Push to `main` and verify the pipeline runs successfully.
@@ -943,11 +943,11 @@ This phase sets up CI/CD, logging, and deploys the application to Azure.
 
 ### 7.5 Verify Production Deployment
 
-- [ ] Navigate to `https://hotshallot.azurewebsites.net/health` → should return `Healthy`.
+- [ ] Navigate to `https://WATR.azurewebsites.net/health` → should return `Healthy`.
 - [ ] Register a new user via the web UI.
 - [ ] Log in with a passkey.
 - [ ] Create a project and tasks.
-- [ ] Use the CLI (`shallot login`) to authenticate and interact with tasks.
+- [ ] Use the CLI (`watr login`) to authenticate and interact with tasks.
 - [ ] Verify real-time updates work (change a task via CLI, see it update in the browser).
 
 ---
@@ -959,13 +959,13 @@ This phase sets up CI/CD, logging, and deploys the application to Azure.
 - [ ] **Full lifecycle test:**
   1. Register a user on the web UI.
   2. Create a project on the web UI.
-  3. Use the CLI to log in (`shallot login`).
-  4. Set the default project (`shallot project set MyProject`).
-  5. Add a task (`shallot add "Implement feature X" --body @spec.md --priority High`).
+  3. Use the CLI to log in (`watr login`).
+  4. Set the default project (`watr project set MyProject`).
+  5. Add a task (`watr add "Implement feature X" --body @spec.md --priority High`).
   6. Verify the task appears on the web dashboard in real-time.
-  7. Claim the task (`shallot claim <id>`).
-  8. Add a note (`shallot note <id> "Started working on this"`).
-  9. Mark as done (`shallot done <id>`).
+  7. Claim the task (`watr claim <id>`).
+  8. Add a note (`watr note <id> "Started working on this"`).
+  9. Mark as done (`watr done <id>`).
   10. Verify the dashboard shows the task as completed with the note.
 
 ### 8.2 Error Handling Verification

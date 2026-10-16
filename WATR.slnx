@@ -1,0 +1,8 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/WATR.Cli/WATR.Cli.csproj" />
+    <Project Path="src/WATR.Shared/WATR.Shared.csproj" />
+    <Project Path="src/WATR.Tests/WATR.Tests.csproj" />
+    <Project Path="src/WATR.Web/WATR.Web.csproj" />
+  </Folder>
+</Solution>

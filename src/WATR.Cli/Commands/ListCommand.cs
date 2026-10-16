@@ -1,0 +1,111 @@
+using Spectre.Console;
+using Spectre.Console.Cli;
+using WATR.Cli.Services;
+using WATR.Shared.DTOs;
+using WATR.Shared.Enums;
+using WATR.Shared.Json;
+using System.Text.Json;
+
+namespace WATR.Cli.Commands;
+
+public class ListCommand : AsyncCommand<ListCommand.Settings>
+{
+    private readonly ApiClient _api;
+    private readonly ConfigService _config;
+    private readonly ProjectContextHelper _projectContext;
+
+    public ListCommand(ApiClient api, ConfigService config, ProjectContextHelper projectContext)
+    {
+        _api = api;
+        _config = config;
+        _projectContext = projectContext;
+    }
+
+    public class Settings : CommandSettings
+    {
+        [CommandOption("-p|--project <NAME>")]
+        public string? ProjectName { get; set; }
+
+        [CommandOption("-s|--status <STATUS>")]
+        public TaskItemStatus? Status { get; set; }
+
+        [CommandOption("--json")]
+        public bool Json { get; set; }
+    }
+
+    public override async Task<int> ExecuteAsync(CommandContext context, Settings settings, CancellationToken cancellationToken)
+    {
+        var projectName = await _projectContext.GetOrPromptProjectAsync(settings.ProjectName, cancellationToken);
+
+        if (string.IsNullOrEmpty(projectName))
+        {
+            return 1;
+        }
+
+        // Get project ID by name
+        var projects = await _api.GetAsync<PaginatedResponse<ProjectDto>>("api/v1/projects");
+        var project = projects.Items.FirstOrDefault(p => p.Name.Equals(projectName, StringComparison.OrdinalIgnoreCase));
+
+        if (project == null)
+        {
+            AnsiConsole.MarkupLine($"[red]Error: Project '{projectName}' not found.[/]");
+            return 3;
+        }
+
+        var path = $"api/v1/projects/{project.Id}/tasks";
+        if (settings.Status.HasValue) path += $"?status={settings.Status.Value}";
+
+        var response = await _api.GetAsync<PaginatedResponse<TaskItemSummaryDto>>(path);
+
+        if (settings.Json)
+        {
+            var json = JsonSerializer.Serialize(response.Items, AppJsonContext.Default.ListTaskItemSummaryDto);
+            AnsiConsole.Write(new Text(json));
+            return 0;
+        }
+
+        var table = new Table();
+        table.AddColumn("ID");
+        table.AddColumn("Handle");
+        table.AddColumn("Title");
+        table.AddColumn("Status");
+        table.AddColumn("Priority");
+        table.AddColumn("Assigned To");
+        table.AddColumn("Updated");
+
+        foreach (var task in response.Items)
+        {
+            table.AddRow(
+                task.Id.ToString(),
+                task.TaskHandle ?? task.TaskNumber.ToString(),
+                task.Title,
+                GetStatusMarkup(task.Status),
+                GetPriorityMarkup(task.Priority),
+                task.AssignedToDisplayName ?? "[grey]Unassigned[/]",
+                task.UpdatedAt.ToLocalTime().ToString("g")
+            );
+        }
+
+        AnsiConsole.Write(table);
+        return 0;
+    }
+
+    private string GetStatusMarkup(TaskItemStatus status) => status switch
+    {
+        TaskItemStatus.Open => "[blue]Open[/]",
+        TaskItemStatus.InProgress => "[yellow]InProgress[/]",
+        TaskItemStatus.Completed => "[green]Completed[/]",
+        TaskItemStatus.Blocked => "[red]Blocked[/]",
+        TaskItemStatus.Cancelled => "[grey]Cancelled[/]",
+        _ => status.ToString()
+    };
+
+    private string GetPriorityMarkup(TaskPriority priority) => priority switch
+    {
+        TaskPriority.Critical => "[red]Critical[/]",
+        TaskPriority.High => "[orange1]High[/]",
+        TaskPriority.Medium => "[yellow]Medium[/]",
+        TaskPriority.Low => "[green]Low[/]",
+        _ => priority.ToString()
+    };
+}

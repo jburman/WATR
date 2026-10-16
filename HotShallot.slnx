@@ -1,8 +1,0 @@
-<Solution>
-  <Folder Name="/src/">
-    <Project Path="src/HotShallot.Cli/HotShallot.Cli.csproj" />
-    <Project Path="src/HotShallot.Shared/HotShallot.Shared.csproj" />
-    <Project Path="src/HotShallot.Tests/HotShallot.Tests.csproj" />
-    <Project Path="src/HotShallot.Web/HotShallot.Web.csproj" />
-  </Folder>
-</Solution>

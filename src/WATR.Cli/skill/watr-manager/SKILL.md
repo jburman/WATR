@@ -1,0 +1,133 @@
+---
+name: watr-manager
+description: Comprehensive guide for using the WATR CLI (watr) to manage projects, tasks, and epics.
+version: 1.0.0
+---
+
+# WATR Task Management
+
+This skill provides instructions for using the `watr` CLI tool to manage your work. It assumes `watr` is installed and available in your system PATH.
+
+## 1. Initial Setup
+
+Before starting work, ensure you are logged in and have a project context set.
+
+### Login
+If you receive authentication errors (exit code 2), run:
+```bash
+watr login
+```
+Follow the device code flow instructions provided in the output.
+
+### Project Setup
+1.  **Create a Project:** If starting a new project.
+    ```bash
+    watr project create "MyProject" --description "Description of the project"
+    ```
+2.  **Set Context:** Set the default project to avoid repeating the `--project` flag.
+    ```bash
+    watr project set "MyProject"
+    ```
+
+## 2. Managing Tasks
+
+### Listing Tasks
+To see what needs to be done:
+```bash
+watr list --status Open
+```
+*   **Tip:** Use `--json` to parse output programmatically.
+    ```bash
+    watr list --status Open --json
+    ```
+
+### Creating Tasks & Epics
+Create tasks with clear titles, priorities, and a short handle.
+
+**Standard Task:**
+```bash
+watr add "Implement Login Page" --handle "login-ui" --type Task --priority High
+```
+*Note: The server will automatically prefix the handle with the task number (e.g., `42-login-ui`).*
+
+**Epic (Large Feature):**
+1.  Create the high-level Epic.
+    ```bash
+    watr add "Authentication System" --handle "auth-epic" --type Epic --priority Critical
+    ```
+2.  **Capture the ID** returned in the output.
+
+### Adding Details (Markdown)
+For complex requirements, use the task body. You can reference files directly to avoid shell escaping issues.
+
+1.  Write details to a temporary file (e.g., `temp_desc.md`).
+2.  Update the task using the `@` prefix.
+    ```bash
+    watr update <ID> --body @temp_desc.md
+    ```
+3.  Delete the temporary file.
+
+**Best Practice for Epics:**
+In the body of an Epic, maintain a checklist of sub-tasks referencing their Handles or IDs.
+
+### Body vs. Notes: The Golden Rule
+*   **BODY:** Use `watr update <ID> --body ...` for the **Definition of Done**. This includes requirements, acceptance criteria, implementation plans, and checklists. This is the "What" and "How".
+*   **NOTES:** Use `watr note <ID> ...` for the **Activity Log**. This includes daily progress, blockers, decision records, and final verification. This is the "Status".
+
+**❌ BAD:** Putting the implementation plan in a Note.
+**✅ GOOD:** Putting the implementation plan in the Body via `watr update`.
+
+## 3. Workflow Lifecycle
+
+### Claiming Work
+When you start working on a task:
+```bash
+watr claim <ID>
+```
+This assigns the task to you.
+
+### Refining the Plan
+Before writing code, update the task **Body** with your detailed technical plan.
+```bash
+# Write plan to file
+echo "## Plan`n- [ ] Create Interface`n- [ ] Implement Class" > plan.md
+# Update Body
+watr update <ID> --body @plan.md
+```
+
+### Updating Status
+Move tasks through their lifecycle:
+```bash
+watr update <ID> --status InProgress
+```
+
+### Adding Notes
+Keep a log of your progress, decisions, and technical details. **Notes support Markdown.**
+```bash
+watr note <ID> "Started implementation. Using JWT for token management."
+```
+For longer notes, use a file:
+```bash
+watr note <ID> @progress.md
+```
+
+### Completion
+When the work is done and verified:
+1.  **Add a Verification Note:**
+    ```bash
+    watr note <ID> "✅ Verified. Unit tests passed. Manual test of login flow successful."
+    ```
+2.  **Mark as Done:**
+    ```bash
+    watr done <ID>
+    ```
+
+## 4. Agent Best Practices
+
+*   **JSON Output:** Always prefer `--json` when you need to read data. It contains full fidelity fields.
+*   **Handles:** Assign user-friendly handles (`watr update <ID> --handle "NAME"`) to important tasks so you can reference them easily later without memorizing UUIDs.
+*   **Error Handling:**
+    *   Exit Code `0`: Success.
+    *   Exit Code `2`: Auth expired -> Run `watr login`.
+    *   Exit Code `3`: Not found -> Check ID.
+    *   Exit Code `4`: Conflict -> Task might be claimed by someone else.

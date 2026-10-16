@@ -1,7 +1,7 @@
-# HotShallot Design Document
+# WATR Design Document
 
 ## 1. Overview
-**HotShallot** is a task tracking system designed for AI coding agents and their human supervisors. It provides visibility into agent activities and facilitates coordination between multiple agents. The system consists of a centralized cloud-based web application (hosting both a Web UI and a REST API) and a cross-platform CLI tool.
+**WATR** (Where's All the Records) is a task tracking system designed for AI coding agents and their human supervisors. It provides visibility into agent activities and facilitates coordination between multiple agents. The system consists of a centralized cloud-based web application (hosting both a Web UI and a REST API) and a cross-platform CLI tool.
 
 ### Core Goals
 1.  **Visibility:** Provide a dashboard for humans to monitor agent progress.
@@ -136,7 +136,7 @@ Since the CLI cannot handle FIDO2 challenges directly (and to support headless a
     *   CLI generates a random 8-digit code (e.g., `1234-5678`).
     *   CLI sends `POST /api/auth/device-login-init` with the code in the request body. The server stores the pending request in an in-memory cache with a 5-minute expiry.
 2.  **User Interaction:**
-    *   CLI displays: "Please go to `https://hotshallot.azurewebsites.net/device` and enter code: `1234-5678`".
+    *   CLI displays: "Please go to `https://WATR.azurewebsites.net/device` and enter code: `1234-5678`".
     *   CLI opens the browser automatically if possible.
 3.  **Polling (CLI):**
     *   CLI polls `GET /api/auth/device-login-status?code=...` every 5 seconds (timeout 5 mins).
@@ -153,7 +153,7 @@ Since the CLI cannot handle FIDO2 challenges directly (and to support headless a
     *   CLI automatically uses the refresh token to obtain a new access token when the current one expires, without requiring any user intervention.
 
 ### 4.3 JWT Policy
-*   **Issuer/Audience:** `HotShallot`
+*   **Issuer/Audience:** `WATR`
 *   **Signing Key:** Must be stored securely in Azure App Service configuration (environment variable or Azure Key Vault reference). Never hardcoded.
 *   **Claims:** `sub` (UserId), `email`, `project_roles`.
 *   **Expiration:** Access Token (1 hour), Refresh Token (30 days).
@@ -235,7 +235,7 @@ Since Blazor Server already maintains a persistent SignalR connection to the ser
     *   Notes Section: List of notes with timestamps + "Add Note" text area. Robust handling for markdown rendering failures and empty states.
 *   **Device Login:** Simple form to enter the 8-digit CLI code.
 
-## 7. CLI Tool (`shallot`)
+## 7. CLI Tool (`watr`)
 
 ### 7.1 Implementation
 *   **Library:** `Spectre.Console` for rich terminal UI (tables, spinners, colored output).
@@ -247,27 +247,27 @@ Since Blazor Server already maintains a persistent SignalR connection to the ser
 *   **Token Management:** The CLI automatically refreshes expired access tokens using the stored refresh token, with no user intervention required.
 
 ### 7.2 Project Context
-*   `shallot project set <name>`: Sets a default project context stored in the local config file (alongside the JWT).
-*   `shallot project get`: Shows the current default project.
+*   `watr project set <name>`: Sets a default project context stored in the local config file (alongside the JWT).
+*   `watr project get`: Shows the current default project.
 *   When a default project is set, the `--project` flag can be omitted from all commands.
 
 ### 7.3 Commands
-*   `shallot init <SERVER_URL>`: Initializes the local directory with a connection to the server. Required before running other commands.
-*   `shallot login`: Initiates device code flow.
-*   `shallot logout`: Clears local credentials.
-*   `shallot status`: Shows logged-in user, current project context, and summary counts (open/in-progress/blocked tasks).
-*   `shallot list --project <name> --status <filter>`: Key-value table of tasks. Supports `--json` flag.
-*   `shallot show <id>`: Renders task details (renders Markdown to ANSI if possible). Supports `--json` flag.
-*   `shallot add "Title" --handle "short-name" --body "Inline text" --project <name>`: Creates a task.
+*   `watr init <SERVER_URL>`: Initializes the local directory with a connection to the server. Required before running other commands.
+*   `watr login`: Initiates device code flow.
+*   `watr logout`: Clears local credentials.
+*   `watr status`: Shows logged-in user, current project context, and summary counts (open/in-progress/blocked tasks).
+*   `watr list --project <name> --status <filter>`: Key-value table of tasks. Supports `--json` flag.
+*   `watr show <id>`: Renders task details (renders Markdown to ANSI if possible). Supports `--json` flag.
+*   `watr add "Title" --handle "short-name" --body "Inline text" --project <name>`: Creates a task.
     *   `--handle` is REQUIRED. It should be a short, lowercase identifier (e.g., `login-page`). The server will automatically prefix it with the task number (e.g., `42-login-page`).
     *   Body supports:
         *   `--body "Inline markdown text"` for literal content.
     *   `--body @file.md` to read from a file (RECOMMENDED for complex markdown to avoid shell escaping issues).
     *   `--body -` to read from stdin (for piping).
-*   `shallot update <id> [--status <status>] [--title "New Title"] [--body "text"] [--priority <level>]`: General-purpose update command for changing any task field. Supports file-based body updates via `@file.md`.
-*   `shallot claim <id>`: Assigns task to self.
-*   `shallot done <id>`: Marks task as completed.
-*   `shallot note <id> "Message"`: Appends a note.
+*   `watr update <id> [--status <status>] [--title "New Title"] [--body "text"] [--priority <level>]`: General-purpose update command for changing any task field. Supports file-based body updates via `@file.md`.
+*   `watr claim <id>`: Assigns task to self.
+*   `watr done <id>`: Marks task as completed.
+*   `watr note <id> "Message"`: Appends a note.
 
 ### 7.4 Exit Codes
 Standard exit codes for programmatic use by agents:
@@ -313,8 +313,8 @@ Standard exit codes for programmatic use by agents:
 ## 9. Brand Identity
 
 ### Logo Description
-**"The Hot Shallot"**
-A cartoon vector-style shallot (small onion) with a determined, slightly manic facial expression. The top of the shallot (the green shoots) is engulfed in stylized orange and red flames. The shallot is wearing a headset and typing on a keyboard that is melting slightly.
+**"The Hot watr"**
+A cartoon vector-style watr (small onion) with a determined, slightly manic facial expression. The top of the watr (the green shoots) is engulfed in stylized orange and red flames. The watr is wearing a headset and typing on a keyboard that is melting slightly.
 
 *Caption:* "Cooking up code."
 
@@ -329,7 +329,7 @@ A cartoon vector-style shallot (small onion) with a determined, slightly manic f
     *   Implement Device Code Token Exchange.
 3.  **Phase 3: API & CLI** (Completed)
     *   Build Task CRUD API.
-    *   Build `shallot` CLI with Spectre.Console.
+    *   Build `watr` CLI with Spectre.Console.
     *   Implement Agent-centric features (JSON output, File inputs).
 4.  **Phase 4: Web UI** (Completed)
     *   Implement Radzen DataGrid with Row Expansion.
