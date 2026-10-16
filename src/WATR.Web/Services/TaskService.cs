@@ -1,3 +1,4 @@
+using System.Numerics.Tensors;
 using WATR.Shared.DTOs;
 using WATR.Shared.Enums;
 using WATR.Shared.Models;
@@ -13,12 +14,21 @@ public class TaskService
     private readonly IDbContextFactory<WatrDbContext> _dbFactory;
     private readonly IHubContext<TaskHub> _hubContext;
     private readonly ILogger<TaskService> _logger;
+    private readonly TaskEmbeddingQueue _embeddingQueue;
+    private readonly IOnnxEmbeddingService _embeddingService;
 
-    public TaskService(IDbContextFactory<WatrDbContext> dbFactory, IHubContext<TaskHub> hubContext, ILogger<TaskService> logger)
+    public TaskService(
+        IDbContextFactory<WatrDbContext> dbFactory,
+        IHubContext<TaskHub> hubContext,
+        ILogger<TaskService> logger,
+        TaskEmbeddingQueue embeddingQueue,
+        IOnnxEmbeddingService embeddingService)
     {
         _dbFactory = dbFactory;
         _hubContext = hubContext;
         _logger = logger;
+        _embeddingQueue = embeddingQueue;
+        _embeddingService = embeddingService;
     }
 
     public async Task<PaginatedResponse<TaskItemSummaryDto>> GetTasksAsync(Guid projectId, IEnumerable<TaskItemStatus>? statuses, TaskPriority? priorityFilter, bool? myTasksOnly, Guid currentUserId, int page, int pageSize)
@@ -141,6 +151,7 @@ public class TaskService
                 await db.SaveChangesAsync();
 
                 await _hubContext.Clients.Group(projectId.ToString()).SendAsync("TaskCreated", task.Id);
+                _embeddingQueue.Enqueue(task.Id);
 
                 return MapToDto(task);
             }
@@ -202,6 +213,7 @@ public class TaskService
         await db.SaveChangesAsync();
 
         await _hubContext.Clients.Group(task.ProjectId.ToString()).SendAsync("TaskUpdated", task.Id);
+        _embeddingQueue.Enqueue(task.Id);
     }
 
     public async Task UpdateTaskStatusAsync(Guid taskId, TaskItemStatus status, Guid userId)
@@ -231,6 +243,7 @@ public class TaskService
             await db.SaveChangesAsync();
 
             await _hubContext.Clients.Group(task.ProjectId.ToString()).SendAsync("TaskUpdated", task.Id);
+            _embeddingQueue.Enqueue(task.Id);
         }
     }
 
@@ -337,6 +350,7 @@ public class TaskService
         var author = await db.Users.FindAsync(userId);
 
         await _hubContext.Clients.Group(task.ProjectId.ToString()).SendAsync("NoteAdded", taskId);
+        _embeddingQueue.Enqueue(taskId);
 
         return new TaskNoteDto
         {
@@ -345,6 +359,101 @@ public class TaskService
             Content = note.Content,
             CreatedAt = note.CreatedAt
         };
+    }
+
+    public async Task<List<TaskSearchResultDto>> SearchTasksAsync(
+        Guid projectId,
+        string query,
+        TaskItemStatus? statusFilter,
+        int top,
+        float minScore,
+        Guid userId,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(query))
+        {
+            return new List<TaskSearchResultDto>();
+        }
+
+        using var db = await _dbFactory.CreateDbContextAsync(cancellationToken);
+
+        if (!await VerifyMembershipAsync(db, projectId, userId))
+        {
+            _logger.LogWarning("User {UserId} attempted to search tasks in project {ProjectId} without membership", userId, projectId);
+            throw new UnauthorizedAccessException("User is not a member of this project");
+        }
+
+        var queryVector = await _embeddingService.GenerateEmbeddingVectorAsync(query, cancellationToken);
+
+        var tasksQuery = db.TaskItems
+            .Include(t => t.AssignedTo)
+            .Where(t => t.ProjectId == projectId);
+
+        if (statusFilter.HasValue)
+        {
+            tasksQuery = tasksQuery.Where(t => t.Status == statusFilter.Value);
+        }
+
+        var candidateTasks = await tasksQuery.ToListAsync(cancellationToken);
+        var querySpan = queryVector.AsSpan();
+        var results = new List<TaskSearchResultDto>();
+
+        foreach (var task in candidateTasks)
+        {
+            float score = 0f;
+
+            if (task.Embedding != null && task.Embedding.Length == 384 * sizeof(float))
+            {
+                var taskSpan = _embeddingService.DeserializeVector(task.Embedding);
+                score = TensorPrimitives.CosineSimilarity(querySpan, taskSpan);
+            }
+            else
+            {
+                var containsInTitle = task.Title.Contains(query, StringComparison.OrdinalIgnoreCase);
+                var containsInBody = !string.IsNullOrEmpty(task.Body) && task.Body.Contains(query, StringComparison.OrdinalIgnoreCase);
+
+                if (containsInTitle || containsInBody)
+                {
+                    score = 0.5f;
+                }
+            }
+
+            if (score >= minScore)
+            {
+                string preview;
+                if (!string.IsNullOrWhiteSpace(task.Body))
+                {
+                    preview = task.Body.Length > 160 ? task.Body.Substring(0, 160) + "..." : task.Body;
+                }
+                else
+                {
+                    preview = task.Title;
+                }
+
+                results.Add(new TaskSearchResultDto
+                {
+                    Task = new TaskItemSummaryDto
+                    {
+                        Id = task.Id,
+                        TaskNumber = task.TaskNumber,
+                        TaskHandle = task.TaskHandle,
+                        TaskType = task.TaskType,
+                        Title = task.Title,
+                        Status = task.Status,
+                        Priority = task.Priority,
+                        AssignedToDisplayName = task.AssignedTo?.DisplayName ?? task.AssignedToName,
+                        UpdatedAt = task.UpdatedAt
+                    },
+                    SimilarityScore = score,
+                    MatchedPreview = preview
+                });
+            }
+        }
+
+        return results
+            .OrderByDescending(r => r.SimilarityScore)
+            .Take(top)
+            .ToList();
     }
 
     private async Task<bool> VerifyMembershipAsync(WatrDbContext db, Guid projectId, Guid userId)

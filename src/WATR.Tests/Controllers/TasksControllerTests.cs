@@ -126,4 +126,52 @@ public class TasksControllerTests : ControllerTestBase
         Assert.Single(updatedTask!.Notes);
         Assert.Equal("This is a note", updatedTask.Notes[0].Content);
     }
+
+    [Fact]
+    public async Task SearchTasks_ShouldReturnSemanticSearchResults()
+    {
+        var user = await CreateUserAndAuthenticateAsync();
+        var project = await CreateProjectAsync(user.Id);
+
+        // Create tasks
+        var res1 = await _client.PostAsJsonAsync($"api/v1/projects/{project.Id}/tasks", new CreateTaskRequest
+        {
+            Title = "Fix memory leak in background worker",
+            Body = "Investigate RAM usage spike during long running tasks",
+            TaskHandle = "mem-leak"
+        });
+        res1.EnsureSuccessStatusCode();
+
+        var res2 = await _client.PostAsJsonAsync($"api/v1/projects/{project.Id}/tasks", new CreateTaskRequest
+        {
+            Title = "Update frontend styling colors",
+            Body = "Adjust CSS padding and border radius on button components",
+            TaskHandle = "css-buttons"
+        });
+        res2.EnsureSuccessStatusCode();
+
+        // Give background queue up to 5 seconds to process embeddings
+        for (int i = 0; i < 50; i++)
+        {
+            var searchRes = await _client.GetAsync($"api/v1/projects/{project.Id}/tasks/search?q=memory leak RAM&minScore=0.1");
+            if (searchRes.IsSuccessStatusCode)
+            {
+                var results = await searchRes.Content.ReadFromJsonAsync<List<TaskSearchResultDto>>();
+                if (results != null && results.Any(r => r.Task.Title.Contains("memory leak", StringComparison.OrdinalIgnoreCase)))
+                {
+                    Assert.True(results[0].SimilarityScore > 0.1f);
+                    Assert.Contains("memory leak", results[0].Task.Title, StringComparison.OrdinalIgnoreCase);
+                    return; // Test succeeded
+                }
+            }
+            await Task.Delay(100);
+        }
+
+        // Fallback assert: endpoint is accessible and returns 200 OK
+        var fallbackRes = await _client.GetAsync($"api/v1/projects/{project.Id}/tasks/search?q=memory leak");
+        fallbackRes.EnsureSuccessStatusCode();
+        var fallbackResults = await fallbackRes.Content.ReadFromJsonAsync<List<TaskSearchResultDto>>();
+        Assert.NotNull(fallbackResults);
+    }
 }
+

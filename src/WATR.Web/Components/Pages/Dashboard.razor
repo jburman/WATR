@@ -24,11 +24,21 @@
     }
     else
     {
-        <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="1rem" Class="rz-mb-4">
-            <RadzenLabel Text="Status:" Style="margin-right: 0.5rem;" />
-            <RadzenDropDown TValue="IEnumerable<TaskItemStatus>" @bind-Value="selectedStatuses" Data="@allStatuses" 
-                            Multiple="true" Chips="true" AllowClear="true" Placeholder="Select statuses..."
-                            Change="@OnStatusFilterChanged" Style="width: 500px;" PopupStyle="height: 260px;" MaxHeight="400px" />
+        <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="1rem" Class="rz-mb-4" Wrap="FlexWrap.Wrap">
+            <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="0.5rem">
+                <RadzenTextBox @bind-Value="searchQuery" Placeholder="Search tasks semantically..." Style="width: 320px;" @onkeydown="@OnSearchKeyDown" />
+                <RadzenButton Icon="search" ButtonStyle="ButtonStyle.Primary" Click="@OnSearch" Size="ButtonSize.Small" />
+                @if (!string.IsNullOrWhiteSpace(searchQuery))
+                {
+                    <RadzenButton Icon="close" ButtonStyle="ButtonStyle.Light" Click="@OnClearSearch" Size="ButtonSize.Small" />
+                }
+            </RadzenStack>
+            <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="0.5rem">
+                <RadzenLabel Text="Status:" Style="margin-right: 0.5rem;" />
+                <RadzenDropDown TValue="IEnumerable<TaskItemStatus>" @bind-Value="selectedStatuses" Data="@allStatuses" 
+                                Multiple="true" Chips="true" AllowClear="true" Placeholder="Select statuses..."
+                                Change="@OnStatusFilterChanged" Style="width: 400px;" PopupStyle="height: 260px;" MaxHeight="400px" />
+            </RadzenStack>
         </RadzenStack>
 
         <RadzenDataGrid @ref="grid" Data="@tasks" TItem="TaskItemSummaryDto" KeyProperty="Id"
@@ -93,6 +103,7 @@
     private readonly HashSet<Guid> expandedTaskIds = new();
     private IEnumerable<TaskItemStatus> allStatuses = Enum.GetValues<TaskItemStatus>();
     private IEnumerable<TaskItemStatus> selectedStatuses = new List<TaskItemStatus> { TaskItemStatus.Open, TaskItemStatus.InProgress };
+    private string searchQuery = string.Empty;
 
     [CascadingParameter]
     private Task<AuthenticationState> authenticationStateTask { get; set; } = default!;
@@ -164,9 +175,43 @@
     {
         if (ProjectContext.SelectedProject != null)
         {
-            var response = await TaskService.GetTasksAsync(ProjectContext.SelectedProject.Id, selectedStatuses, null, null, currentUserId, 1, 100);
-            tasks = response.Items;
+            if (!string.IsNullOrWhiteSpace(searchQuery))
+            {
+                var searchResults = await TaskService.SearchTasksAsync(
+                    ProjectContext.SelectedProject.Id,
+                    searchQuery,
+                    null,
+                    50,
+                    0.2f,
+                    currentUserId);
+
+                tasks = searchResults.Select(r => r.Task).ToList();
+            }
+            else
+            {
+                var response = await TaskService.GetTasksAsync(ProjectContext.SelectedProject.Id, selectedStatuses, null, null, currentUserId, 1, 100);
+                tasks = response.Items;
+            }
         }
+    }
+
+    private async Task OnSearchKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+        {
+            await OnSearch();
+        }
+    }
+
+    private async Task OnSearch()
+    {
+        await LoadTasks();
+    }
+
+    private async Task OnClearSearch()
+    {
+        searchQuery = string.Empty;
+        await LoadTasks();
     }
 
     private Task OnTaskEventReceivedAsync() =>
@@ -248,7 +293,7 @@
             await TaskService.UpdateTaskStatusAsync(task.Id, newStatus, currentUserId);
             // No need to manually reload, SignalR will trigger RefreshData -> LoadTasks
         }
-        catch (Exception ex)
+        catch (Exception)
         {
             // Revert UI if update fails (though grid reload will fix it eventually)
             await LoadTasks(); 

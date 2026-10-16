@@ -44,6 +44,34 @@ public class TasksController : ApiControllerBase
         }
     }
 
+    [HttpGet("/api/v1/projects/{projectId}/tasks/search")]
+    public async Task<ActionResult<List<TaskSearchResultDto>>> SearchProjectTasks(
+        Guid projectId,
+        [FromQuery] string q,
+        [FromQuery] TaskItemStatus? status = null,
+        [FromQuery] int top = 10,
+        [FromQuery] float minScore = 0.25f)
+    {
+        var userIdStr = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (userIdStr == null) return Unauthorized();
+        var userId = Guid.Parse(userIdStr);
+
+        try
+        {
+            var results = await _taskService.SearchTasksAsync(projectId, q, status, top, minScore, userId);
+            return results;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return Forbid();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error searching tasks for project {ProjectId}", projectId);
+            return BadRequest(ex.Message);
+        }
+    }
+
     [HttpPost("/api/v1/projects/{projectId}/tasks")]
     public async Task<ActionResult<TaskItemDto>> CreateTask(Guid projectId, CreateTaskRequest request)
     {

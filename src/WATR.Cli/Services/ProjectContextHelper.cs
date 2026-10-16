@@ -14,6 +14,39 @@ public class ProjectContextHelper
         _api = api;
     }
 
+    public string? ResolveProjectName(string? explicitProjectName)
+    {
+        if (!string.IsNullOrWhiteSpace(explicitProjectName))
+        {
+            return explicitProjectName;
+        }
+
+        var localSettings = _config.GetLocalSettings();
+        if (localSettings != null && !string.IsNullOrWhiteSpace(localSettings.ProjectName))
+        {
+            return localSettings.ProjectName;
+        }
+
+        var globalConfig = _config.Load();
+        if (!string.IsNullOrWhiteSpace(globalConfig.DefaultProject))
+        {
+            return globalConfig.DefaultProject;
+        }
+
+        return null;
+    }
+
+    public Task<string> ResolveProjectAsync(string? explicitProjectName, CancellationToken cancellationToken = default)
+    {
+        var projectName = ResolveProjectName(explicitProjectName);
+        if (string.IsNullOrWhiteSpace(projectName))
+        {
+            throw new InvalidOperationException("No active project context found. Please specify the 'project' parameter or configure the active project using 'watr_set_project' or 'watr config set-project <name>'.");
+        }
+
+        return Task.FromResult(projectName);
+    }
+
     public async Task<string?> GetOrPromptProjectAsync(string? explicitProjectName, CancellationToken cancellationToken)
     {
         // 1. Explicit flag overrides all

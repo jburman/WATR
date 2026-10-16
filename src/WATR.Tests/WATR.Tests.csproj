@@ -24,6 +24,7 @@
   <ItemGroup>
     <ProjectReference Include="..\WATR.Web\WATR.Web.csproj" />
     <ProjectReference Include="..\WATR.Shared\WATR.Shared.csproj" />
+    <ProjectReference Include="..\WATR.Cli\WATR.Cli.csproj" />
   </ItemGroup>
 
 </Project>

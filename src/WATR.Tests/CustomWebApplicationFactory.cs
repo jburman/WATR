@@ -30,14 +30,15 @@ public class CustomWebApplicationFactory : WebApplicationFactory<Program>
             services.RemoveAll<IDbContextFactory<WatrDbContext>>();
             services.RemoveAll<DbContextOptions<WatrDbContext>>();
 
-            // Create open connection
-            _connection = new SqliteConnection("DataSource=:memory:");
+            var dbName = "watr_test_" + Guid.NewGuid().ToString("N");
+            var connStr = $"Data Source={dbName};Mode=Memory;Cache=Shared";
+            _connection = new SqliteConnection(connStr);
             _connection.Open();
 
-            // Register DbContextFactory to use the single open connection
+            // Register DbContextFactory to use connection string with shared in-memory database
             services.AddDbContextFactory<WatrDbContext>(options =>
             {
-                options.UseSqlite(_connection);
+                options.UseSqlite(connStr);
             });
 
             // We also need the Scoped adapter because Program.cs adds it manually? 

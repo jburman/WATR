@@ -8,10 +8,17 @@ public class ConfigService
     private const string ConfigFileName = "config.json";
     private readonly string _configPath;
 
-    public ConfigService()
+    public ConfigService(string? customConfigPath = null)
     {
-        var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-        _configPath = Path.Combine(home, ".watr", ConfigFileName);
+        if (!string.IsNullOrWhiteSpace(customConfigPath))
+        {
+            _configPath = customConfigPath;
+        }
+        else
+        {
+            var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+            _configPath = Path.Combine(home, ".watr", ConfigFileName);
+        }
     }
 
     public ConfigData Load()

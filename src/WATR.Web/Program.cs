@@ -122,6 +122,14 @@ builder.Services.AddScoped<ProjectContextService>();
 builder.Services.AddScoped<UserService>();
 builder.Services.AddMemoryCache();
 
+builder.Services.AddHttpClient("ModelDownloader", client =>
+{
+    client.Timeout = TimeSpan.FromMinutes(5);
+});
+builder.Services.AddSingleton<IOnnxEmbeddingService, OnnxEmbeddingService>();
+builder.Services.AddSingleton<TaskEmbeddingQueue>();
+builder.Services.AddHostedService<TaskEmbeddingWorker>();
+
 builder.Services.AddHealthChecks()
     .AddDbContextCheck<WatrDbContext>();
 

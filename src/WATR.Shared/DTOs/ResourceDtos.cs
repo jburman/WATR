@@ -122,3 +122,22 @@ public class UserDto
     public string DisplayName { get; set; } = string.Empty;
     public DateTime CreatedAt { get; set; }
 }
+
+public class TaskSearchResultDto
+{
+    public TaskItemSummaryDto Task { get; set; } = new();
+    public float SimilarityScore { get; set; }
+    public string? MatchedPreview { get; set; }
+}
+
+public class WatrStatusDto
+{
+    public string ServerUrl { get; set; } = string.Empty;
+    public string UserDisplayName { get; set; } = string.Empty;
+    public string UserEmail { get; set; } = string.Empty;
+    public string? LocalProject { get; set; }
+    public string? DefaultProject { get; set; }
+    public string? ActiveProject { get; set; }
+}
+
+

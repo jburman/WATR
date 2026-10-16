@@ -997,3 +997,271 @@ This phase sets up CI/CD, logging, and deploys the application to Azure.
   - How to build and use the CLI.
   - How to deploy to Azure.
 - [ ] Verify all code has appropriate comments where logic is non-obvious.
+
+---
+
+## Phase 9: Semantic Search & Background CPU Embeddings
+
+This phase adds local, CPU-based vector embedding generation (`all-MiniLM-L6-v2` via ONNX Runtime), lazy background indexing via a `BackgroundService`, inline SQLite `BLOB` vector storage, and SIMD-accelerated cosine similarity search (`TensorPrimitives.CosineSimilarity`).
+
+### 9.1 Install NuGet Packages (in WATR.Web)
+
+- [x] Install the required AI, ONNX, Tokenizer, and Tensor packages in `src/WATR.Web`:
+  ```bash
+  cd src/WATR.Web
+  dotnet add package Microsoft.Extensions.AI
+  dotnet add package Microsoft.ML.OnnxRuntime
+  dotnet add package Microsoft.ML.Tokenizers
+  dotnet add package System.Numerics.Tensors
+  ```
+- [x] Verify the solution builds: `dotnet build`
+
+### 9.2 Update Data Model, DTOs, and Create EF Core Migration
+
+- [x] In `WATR.Shared/Models/TaskItem.cs`, add the vector storage columns:
+  ```csharp
+  public byte[]? Embedding { get; set; }
+  public DateTime? EmbeddingUpdatedAt { get; set; }
+  ```
+- [x] In `WATR.Shared/DTOs/ResourceDtos.cs`, add `TaskSearchResultDto`:
+  ```csharp
+  public class TaskSearchResultDto
+  {
+      public TaskItemSummaryDto Task { get; set; } = new();
+      public float SimilarityScore { get; set; }
+      public string? MatchedPreview { get; set; }
+  }
+  ```
+- [x] Register `TaskSearchResultDto` and `List<TaskSearchResultDto>` in `WATR.Shared/Json/AppJsonContext.cs`:
+  ```csharp
+  [JsonSerializable(typeof(TaskSearchResultDto))]
+  [JsonSerializable(typeof(List<TaskSearchResultDto>))]
+  ```
+- [x] Generate and apply the EF Core migration in `src/WATR.Web`:
+  ```bash
+  cd src/WATR.Web
+  dotnet ef migrations add AddTaskEmbeddings
+  ```
+
+### 9.3 Implement the Lazy CPU ONNX Embedding Service
+
+- [x] Create `Services/OnnxEmbeddingService.cs` in `WATR.Web` implementing `IEmbeddingGenerator<string, Embedding<float>>` (or a dedicated `ITaskEmbeddingGenerator` service):
+  - Store/cache the `all-MiniLM-L6-v2` ONNX model (`model.onnx`) and vocabulary (`vocab.txt`) in `App_Data/models/all-MiniLM-L6-v2/`.
+  - Use an async lazy pattern (`SemaphoreSlim` + lazy initialization) so the ONNX `InferenceSession` and `BertTokenizer` are **not** loaded during web app startup, but only when the first background embedding job or search query runs.
+  - If `model.onnx` or `vocab.txt` is missing on disk, download them automatically from HuggingFace (`https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2/resolve/main/onnx/model.onnx` and `vocab.txt`) into `App_Data/models/all-MiniLM-L6-v2/`.
+  - Tokenize input text (max 256/512 tokens), run `InferenceSession.Run` on the CPU, perform attention-masked **mean pooling** across token embeddings, and L2-normalize the resulting 384-element `float[]` vector using `TensorPrimitives.Norm`:
+    ```csharp
+    var norm = TensorPrimitives.Norm(vectorSpan);
+    if (norm > 0)
+    {
+        TensorPrimitives.Divide(vectorSpan, norm, vectorSpan);
+    }
+    ```
+- [x] Add helper methods to convert between `float[]` (`ReadOnlySpan<float>`) and `byte[]` (`BLOB` of 1,536 bytes):
+  ```csharp
+  public static byte[] SerializeVector(ReadOnlySpan<float> vector) =>
+      MemoryMarshal.AsBytes(vector).ToArray();
+
+  public static ReadOnlySpan<float> DeserializeVector(byte[] blob) =>
+      MemoryMarshal.Cast<byte, float>(blob.AsSpan());
+  ```
+- [x] Build the composite document formatter for a `TaskItem` (including its `Notes`):
+  ```csharp
+  public static string BuildCompositeTaskText(TaskItem task)
+  {
+      var sb = new StringBuilder();
+      sb.AppendLine($"[{task.TaskType ?? "Task"}] {task.TaskHandle}: {task.Title}");
+      if (!string.IsNullOrWhiteSpace(task.Body))
+      {
+          sb.AppendLine();
+          sb.AppendLine(task.Body);
+      }
+      if (task.Notes != null && task.Notes.Count > 0)
+      {
+          sb.AppendLine();
+          sb.AppendLine("Notes:");
+          foreach (var note in task.Notes.OrderBy(n => n.CreatedAt))
+          {
+              sb.AppendLine($"- {note.Content}");
+          }
+      }
+      return sb.ToString();
+  }
+  ```
+
+### 9.4 Implement the Background Embedding Queue & Worker
+
+- [x] Create `Services/TaskEmbeddingQueue.cs` in `WATR.Web`:
+  ```csharp
+  using System.Threading.Channels;
+
+  namespace WATR.Web.Services;
+
+  public class TaskEmbeddingQueue
+  {
+      private readonly Channel<Guid> _channel = Channel.CreateUnbounded<Guid>(
+          new UnboundedChannelOptions { SingleReader = true });
+
+      public void Enqueue(Guid taskId) => _channel.Writer.TryWrite(taskId);
+
+      public IAsyncEnumerable<Guid> ReadAllAsync(CancellationToken ct) =>
+          _channel.Reader.ReadAllAsync(ct);
+  }
+  ```
+- [x] Create `Services/TaskEmbeddingWorker.cs` extending `BackgroundService`:
+  - On startup (after a 10-second warm-up delay) and periodically every 5 minutes, query SQLite for any tasks where `Embedding == null || EmbeddingUpdatedAt == null || EmbeddingUpdatedAt < UpdatedAt` and enqueue their `Id`s into `TaskEmbeddingQueue`.
+  - Consume `taskId`s from `TaskEmbeddingQueue.ReadAllAsync(stoppingToken)`.
+  - For each `taskId`, load the `TaskItem` with `.Include(t => t.Notes)` via `IDbContextFactory<WatrDbContext>`.
+  - Skip if `task.Embedding != null && task.EmbeddingUpdatedAt >= task.UpdatedAt` (deduplicates rapid updates).
+  - Generate the 384-d vector via `OnnxEmbeddingService`, serialize to `byte[]`, set `task.Embedding` and `task.EmbeddingUpdatedAt = DateTime.UtcNow`, and save via `db.SaveChangesAsync(stoppingToken)`.
+- [x] Register `OnnxEmbeddingService` (Singleton), `TaskEmbeddingQueue` (Singleton), and `TaskEmbeddingWorker` (`AddHostedService<TaskEmbeddingWorker>()`) in `WATR.Web/Program.cs`.
+- [x] Inject `TaskEmbeddingQueue` into `TaskService` and call `_embeddingQueue.Enqueue(task.Id)` at the end of:
+  - `CreateTaskAsync`
+  - `UpdateTaskAsync`
+  - `AddNoteAsync`
+
+### 9.5 Implement Semantic Search in `TaskService` and `TasksController`
+
+- [x] Add `SearchTasksAsync` to `WATR.Web/Services/TaskService.cs`:
+  - Verify project membership (`VerifyMembershipAsync`).
+  - Generate the 384-float query embedding for `query` using `OnnxEmbeddingService`.
+  - Query candidate tasks for `projectId` (applying optional `status` filter).
+  - For tasks with a non-null `Embedding` (`Length == 384 * sizeof(float)`), compute cosine similarity via `TensorPrimitives.CosineSimilarity(queryVector, DeserializeVector(task.Embedding))`.
+  - For tasks whose `Embedding` is still `null` (newly created and awaiting background processing), perform a case-insensitive substring check on `Title` and `Body` and assign a fallback score (e.g., `0.5f`) if matched.
+  - Filter by `minScore` (default `0.25f`), order descending by `SimilarityScore`, take `top` (default `10`), and return `List<TaskSearchResultDto>`.
+- [x] Add the REST API endpoint in `WATR.Web/Controllers/TasksController.cs`:
+  ```csharp
+  [HttpGet("/api/v1/projects/{projectId}/tasks/search")]
+  public async Task<ActionResult<List<TaskSearchResultDto>>> SearchProjectTasks(
+      Guid projectId,
+      [FromQuery] string q,
+      [FromQuery] TaskItemStatus? status = null,
+      [FromQuery] int top = 10,
+      [FromQuery] float minScore = 0.25f)
+  ```
+
+### 9.6 Expose Semantic Search in CLI (`watr search`) and Blazor Dashboard
+
+- [x] Create `Commands/SearchCommand.cs` in `WATR.Cli`:
+  - Arguments: `<QUERY>` (string).
+  - Options: `--project <name>`, `--status <status>`, `--top <n>`, `--json`.
+  - Calls `GET /api/v1/projects/{projectId}/tasks/search?q=...&top=...`.
+  - Displays a Spectre.Console table with columns: `Score` (formatted as percentage/decimal), `Handle`, `Title`, `Status`, `Priority`, `Assigned To` (or raw JSON when `--json` is passed).
+- [x] Register `config.AddCommand<SearchCommand>("search");` in `WATR.Cli/Program.cs`.
+- [x] Add a semantic search input box (`RadzenTextBox` with search icon and clear button) above the grid in `WATR.Web/Components/Pages/Dashboard.razor` so human supervisors can search tasks semantically from the web UI.
+
+### 9.7 Build & Test Verification for Semantic Search
+
+- [x] Create tasks with distinct topics and notes (e.g., a task about "JWT refresh token expiration bug" and another about "Dark mode CSS contrast on dashboard").
+- [x] Verify `TaskEmbeddingWorker` logs background embedding completion and populates `Embedding` (1,536 bytes) and `EmbeddingUpdatedAt` in SQLite.
+- [x] Run `watr search "authentication token timeout"` and verify the JWT task ranks first with a high similarity score even though the exact words "authentication" and "timeout" were not in the title.
+- [x] Add a unit/integration test in `WATR.Tests` verifying `SearchProjectTasks` returns expected ranked results.
+
+---
+
+## Phase 10: MCP Server (`watr mcp`) for Coding Agents
+
+This phase adds a built-in Model Context Protocol (`stdio`) server to `watr` so coding agents (such as **Antigravity**, Claude Code, and Cursor) can natively discover and invoke WATR tools without shell-escaping overhead.
+
+### 10.1 Install MCP SDK Packages (in WATR.Cli)
+
+- [x] Add the official C# MCP SDK and Hosting packages to `src/WATR.Cli/WATR.Cli.csproj`:
+  ```bash
+  cd src/WATR.Cli
+  dotnet add package ModelContextProtocol --prerelease
+  dotnet add package Microsoft.Extensions.Hosting
+  ```
+  > **Note on Native AOT vs Self-Contained Single-File:** If `ModelContextProtocol` attribute reflection conflicts with `<PublishAot>true</PublishAot>`, either register tools explicitly via `McpServerTool.Create(...)` with source-generated `AppJsonContext` metadata, or switch `WATR.Cli.csproj` to `<PublishSingleFile>true</PublishSingleFile>` + `<SelfContained>true</SelfContained>` so reflection-based MCP tool discovery works without trimming issues.
+
+### 10.2 Add Non-Interactive Project Resolution for MCP Mode
+
+- [x] In `WATR.Cli/Services/ProjectContextHelper.cs`, add a non-interactive method `ResolveProjectAsync(string? explicitProjectName, CancellationToken ct)` for MCP tool calls:
+  - Checks `explicitProjectName` first.
+  - Checks `.watr/settings.json` in the current working directory (and parent directories) via `_config.GetLocalSettings()`.
+  - Checks `DefaultProject` in `~/.watr/config.json`.
+  - **Never calls `AnsiConsole.Ask`** (which would corrupt `stdio` JSON-RPC communication or hang the MCP server). If no project is configured, throws an informative exception: `"No WATR project specified and no .watr/settings.json found. Pass projectName or call watr_set_project first."`
+  - Resolves the project name to its `ProjectDto` (`Id` and `Name`) via `GET /api/v1/projects`.
+
+### 10.3 Implement the MCP Tools Class (`WatrMcpTools`)
+
+- [x] Create `Mcp/WatrMcpTools.cs` in `WATR.Cli` decorated with `[McpServerToolType]`:
+  - **`watr_status`** (`projectName?`) — calls `GET /api/v1/user/me` and fetches task counts for the active project, returning a JSON summary.
+  - **`watr_list_projects`** (`page?`, `pageSize?`) — calls `GET /api/v1/projects`.
+  - **`watr_create_project`** (`name`, `description?`, `taskTypes?`) — calls `POST /api/v1/projects` and links `.watr/settings.json`.
+  - **`watr_set_project`** (`projectName`) — validates the project exists and writes `.watr/settings.json` in the current workspace.
+  - **`watr_list_tasks`** (`projectName?`, `status?`, `priority?`, `assignedToMe?`, `page?`, `pageSize?`) — calls `GET /api/v1/projects/{projectId}/tasks`.
+  - **`watr_search_tasks`** (`query`, `projectName?`, `status?`, `top?`) — calls `GET /api/v1/projects/{projectId}/tasks/search` for semantic vector search.
+  - **`watr_get_task`** (`idOrHandle`, `projectName?`) — if `Guid.TryParse(idOrHandle, out var id)` succeeds, calls `GET /api/v1/tasks/{id}`; otherwise resolves the project and calls `GET /api/v1/projects/{projectId}/tasks/handle/{idOrHandle}`.
+  - **`watr_create_task`** (`title`, `handle`, `body?`, `taskType?`, `priority?`, `projectName?`) — calls `POST /api/v1/projects/{projectId}/tasks` and returns the created `TaskItemDto` JSON.
+  - **`watr_update_task`** (`id`, `title?`, `body?`, `handle?`, `taskType?`, `status?`, `priority?`) — calls `PATCH /api/v1/tasks/{id}`.
+  - **`watr_claim_task`** (`id`) — calls `POST /api/v1/tasks/{id}/claim`.
+  - **`watr_release_task`** (`id`) — calls `POST /api/v1/tasks/{id}/release`.
+  - **`watr_complete_task`** (`id`, `verificationNote?`) — if `verificationNote` is provided, calls `POST /api/v1/tasks/{id}/notes`, then calls `PATCH /api/v1/tasks/{id}` with `Status = Completed`.
+  - **`watr_add_note`** (`id`, `content`) — calls `POST /api/v1/tasks/{id}/notes`.
+
+### 10.4 Implement `McpCommand` (`watr mcp`)
+
+- [x] Create `Commands/McpCommand.cs` in `WATR.Cli`:
+  ```csharp
+  using Microsoft.Extensions.DependencyInjection;
+  using Microsoft.Extensions.Hosting;
+  using Microsoft.Extensions.Logging;
+  using ModelContextProtocol.Server;
+  using Spectre.Console.Cli;
+  using WATR.Cli.Mcp;
+  using WATR.Cli.Services;
+
+  namespace WATR.Cli.Commands;
+
+  public class McpCommand : AsyncCommand
+  {
+      public override async Task<int> ExecuteAsync(CommandContext context, CancellationToken cancellationToken)
+      {
+          var builder = Host.CreateApplicationBuilder();
+
+          // Route all logs to stderr so stdout remains clean for MCP JSON-RPC messages
+          builder.Logging.ClearProviders();
+          builder.Logging.AddConsole(options =>
+          {
+              options.LogToStandardErrorThreshold = LogLevel.Trace;
+          });
+
+          builder.Services.AddSingleton<ConfigService>();
+          builder.Services.AddSingleton<TokenStore>();
+          builder.Services.AddSingleton<ApiClient>();
+          builder.Services.AddSingleton<ProjectContextHelper>();
+
+          builder.Services
+              .AddMcpServer()
+              .WithStdioServerTransport()
+              .WithToolsFromAssembly();
+
+          var host = builder.Build();
+          await host.RunAsync(cancellationToken);
+          return 0;
+      }
+  }
+  ```
+- [x] Register `config.AddCommand<McpCommand>("mcp");` in `WATR.Cli/Program.cs`.
+
+### 10.5 Update Agent Skill & Configure Antigravity
+
+- [x] Update `src/WATR.Cli/skill/watr-manager/SKILL.md` to document both the **MCP Tools** (preferred when the `watr` MCP server is connected) and the **CLI commands** (fallback), including guidance on using `watr_search_tasks` / `watr search` before creating new tasks to avoid duplicates and discover prior context.
+- [x] Configure Antigravity's `mcp_config.json` to register the `watr` MCP server:
+  ```json
+  {
+    "mcpServers": {
+      "watr": {
+        "command": "watr",
+        "args": ["mcp"]
+      }
+    }
+  }
+  ```
+
+### 10.6 Build & End-to-End Verification
+
+- [x] Build `WATR.Cli`: `dotnet build src/WATR.Cli`
+- [x] Test `watr mcp` with an MCP client or inspector by sending an `initialize` and `tools/list` JSON-RPC request over `stdin` and verifying that all 13 `watr_*` tools are returned on `stdout` with no extraneous console output.
+- [x] Invoke `watr_status`, `watr_create_task`, `watr_add_note`, and `watr_search_tasks` from Antigravity and verify real-time updates appear on the WATR Blazor dashboard.
+

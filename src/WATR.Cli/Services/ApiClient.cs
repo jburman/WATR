@@ -13,10 +13,16 @@ public class ApiClient
     private readonly ConfigService _config;
     private readonly TokenStore _tokenStore;
 
-    public ApiClient(ConfigService config, TokenStore tokenStore)
+    public ApiClient(ConfigService config, TokenStore tokenStore, HttpClient? http = null)
     {
         _config = config;
         _tokenStore = tokenStore;
+
+        if (http != null)
+        {
+            _http = http;
+            return;
+        }
         
         var configData = _config.Load();
         var serverUrl = configData.ServerUrl;

@@ -1,133 +1,147 @@
 ---
 name: watr-manager
-description: Comprehensive guide for using the WATR CLI (watr) to manage projects, tasks, and epics.
-version: 1.0.0
+description: Comprehensive guide for using WATR via MCP Tools or the CLI (watr) to manage projects, tasks, epics, and semantic search.
+version: 2.0.0
 ---
 
 # WATR Task Management
 
-This skill provides instructions for using the `watr` CLI tool to manage your work. It assumes `watr` is installed and available in your system PATH.
+WATR provides two interfaces for AI coding agents:
+1. **Model Context Protocol (MCP) Server (`watr mcp`)**: Direct, structured tool calling without shell execution overhead or escaping hazards (Recommended).
+2. **CLI (`watr`)**: Interactive or scripted command-line operations with JSON support.
 
-## 1. Initial Setup
+---
 
-Before starting work, ensure you are logged in and have a project context set.
+## 1. Configuring WATR as an MCP Server
 
-### Login
-If you receive authentication errors (exit code 2), run:
+When configuring WATR for Antigravity or any MCP-compatible coding agent, register `watr mcp` in your Antigravity MCP configuration (`~/.gemini/antigravity/mcp_config.json` or project-level `.gemini/settings.json`):
+
+```json
+{
+  "mcpServers": {
+    "watr": {
+      "command": "watr",
+      "args": ["mcp"]
+    }
+  }
+}
+```
+
+> **Note:** Ensure `watr` is initialized and logged in via `watr init <SERVER_URL>` and `watr login` before starting the MCP server.
+
+---
+
+## 2. MCP Tool Suite Reference
+
+When the WATR MCP server is active, prefer calling these tools directly:
+
+| Tool Name | Type | Description | Key Parameters |
+| :--- | :--- | :--- | :--- |
+| `watr_status` | Read | Get server URL, authenticated user, and active project context | None |
+| `watr_list_projects` | Read | List all accessible projects | `page`, `pageSize` |
+| `watr_create_project` | Write | Create a new project | `name`, `description` |
+| `watr_set_project` | Write | Set active project in local `.watr/settings.json` or global config | `name`, `global` (bool) |
+| `watr_list_tasks` | Read | List tasks with filtering | `project`, `status`, `priority`, `assignedTo`, `page`, `pageSize` |
+| `watr_search_tasks` | Read | **Semantic vector search** across task titles, bodies, and notes | `query`, `project`, `status`, `top`, `minScore` |
+| `watr_get_task` | Read | Get full task details including markdown body and notes | `identifier` (UUID or handle), `project` |
+| `watr_create_task` | Write | Create a new task or epic | `title`, `project`, `body`, `handle`, `taskType`, `priority` |
+| `watr_update_task` | Write | Update task properties | `id`, `title`, `body`, `status`, `priority`, `handle`, `taskType` |
+| `watr_claim_task` | Write | Assign task to authenticated user | `id` |
+| `watr_release_task` | Write | Release assigned task back to pool | `id` |
+| `watr_complete_task` | Write | Mark task status as Done | `id` |
+| `watr_add_note` | Write | Add markdown note to task activity log | `id`, `content` |
+
+---
+
+## 3. Semantic Vector Search
+
+WATR features local, CPU-based semantic vector embeddings (`all-MiniLM-L6-v2`) generated asynchronously in the background for all task titles, descriptions, and notes.
+
+### Using MCP:
+```json
+// Tool Call: watr_search_tasks
+{
+  "query": "fix memory leak in background worker",
+  "minScore": 0.25,
+  "top": 5
+}
+```
+
+### Using CLI:
 ```bash
+watr search "fix memory leak in background worker" --min-score 0.25 --top 5
+# With JSON output
+watr search "database connection timeouts" --json
+```
+
+Use semantic search when investigating related tasks, existing bugs, or prior work where exact keywords may vary.
+
+---
+
+## 4. CLI Workflow & Commands
+
+If using the CLI directly:
+
+### Initial Setup
+```bash
+watr init https://watr.example.com
 watr login
+watr project create "MyProject" --description "Project description"
+watr project set "MyProject"
 ```
-Follow the device code flow instructions provided in the output.
 
-### Project Setup
-1.  **Create a Project:** If starting a new project.
-    ```bash
-    watr project create "MyProject" --description "Description of the project"
-    ```
-2.  **Set Context:** Set the default project to avoid repeating the `--project` flag.
-    ```bash
-    watr project set "MyProject"
-    ```
-
-## 2. Managing Tasks
-
-### Listing Tasks
-To see what needs to be done:
+### Managing Tasks
 ```bash
-watr list --status Open
-```
-*   **Tip:** Use `--json` to parse output programmatically.
-    ```bash
-    watr list --status Open --json
-    ```
+# List tasks
+watr list --status Open --json
 
-### Creating Tasks & Epics
-Create tasks with clear titles, priorities, and a short handle.
+# Semantic search
+watr search "database connection timeout"
 
-**Standard Task:**
-```bash
-watr add "Implement Login Page" --handle "login-ui" --type Task --priority High
-```
-*Note: The server will automatically prefix the handle with the task number (e.g., `42-login-ui`).*
+# Create standard task
+watr add "Implement OAuth flow" --handle "oauth-ui" --type Task --priority High
 
-**Epic (Large Feature):**
-1.  Create the high-level Epic.
-    ```bash
-    watr add "Authentication System" --handle "auth-epic" --type Epic --priority Critical
-    ```
-2.  **Capture the ID** returned in the output.
+# Create epic
+watr add "Security & Authentication" --handle "sec-epic" --type Epic --priority Critical
 
-### Adding Details (Markdown)
-For complex requirements, use the task body. You can reference files directly to avoid shell escaping issues.
+# Inspect task
+watr get <ID-or-Handle> --json
 
-1.  Write details to a temporary file (e.g., `temp_desc.md`).
-2.  Update the task using the `@` prefix.
-    ```bash
-    watr update <ID> --body @temp_desc.md
-    ```
-3.  Delete the temporary file.
-
-**Best Practice for Epics:**
-In the body of an Epic, maintain a checklist of sub-tasks referencing their Handles or IDs.
-
-### Body vs. Notes: The Golden Rule
-*   **BODY:** Use `watr update <ID> --body ...` for the **Definition of Done**. This includes requirements, acceptance criteria, implementation plans, and checklists. This is the "What" and "How".
-*   **NOTES:** Use `watr note <ID> ...` for the **Activity Log**. This includes daily progress, blockers, decision records, and final verification. This is the "Status".
-
-**❌ BAD:** Putting the implementation plan in a Note.
-**✅ GOOD:** Putting the implementation plan in the Body via `watr update`.
-
-## 3. Workflow Lifecycle
-
-### Claiming Work
-When you start working on a task:
-```bash
+# Claim task
 watr claim <ID>
-```
-This assigns the task to you.
 
-### Refining the Plan
-Before writing code, update the task **Body** with your detailed technical plan.
-```bash
-# Write plan to file
-echo "## Plan`n- [ ] Create Interface`n- [ ] Implement Class" > plan.md
-# Update Body
+# Update body (Definition of Done)
 watr update <ID> --body @plan.md
-```
 
-### Updating Status
-Move tasks through their lifecycle:
-```bash
+# Update status
 watr update <ID> --status InProgress
+
+# Add progress note
+watr note <ID> "Implemented PKCE code verifier and challenge."
+
+# Complete task
+watr note <ID> "✅ Verified with unit and integration tests."
+watr done <ID>
 ```
 
-### Adding Notes
-Keep a log of your progress, decisions, and technical details. **Notes support Markdown.**
-```bash
-watr note <ID> "Started implementation. Using JWT for token management."
-```
-For longer notes, use a file:
-```bash
-watr note <ID> @progress.md
-```
+---
 
-### Completion
-When the work is done and verified:
-1.  **Add a Verification Note:**
-    ```bash
-    watr note <ID> "✅ Verified. Unit tests passed. Manual test of login flow successful."
-    ```
-2.  **Mark as Done:**
-    ```bash
-    watr done <ID>
-    ```
+## 5. Body vs. Notes: The Golden Rule
 
-## 4. Agent Best Practices
+* **BODY:** The **Definition of Done**. Requirements, acceptance criteria, implementation plans, and checklists. Update via `watr_update_task` (MCP) or `watr update <ID> --body ...` (CLI).
+* **NOTES:** The **Activity Log**. Progress updates, roadblocks, decision records, and verification results. Add via `watr_add_note` (MCP) or `watr note <ID> ...` (CLI).
 
-*   **JSON Output:** Always prefer `--json` when you need to read data. It contains full fidelity fields.
-*   **Handles:** Assign user-friendly handles (`watr update <ID> --handle "NAME"`) to important tasks so you can reference them easily later without memorizing UUIDs.
-*   **Error Handling:**
-    *   Exit Code `0`: Success.
-    *   Exit Code `2`: Auth expired -> Run `watr login`.
-    *   Exit Code `3`: Not found -> Check ID.
-    *   Exit Code `4`: Conflict -> Task might be claimed by someone else.
+❌ **BAD:** Putting implementation plans or architecture requirements in a Note.  
+✅ **GOOD:** Putting implementation plans in the Task Body, and progress / completion verification in Notes.
+
+---
+
+## 6. Agent Best Practices
+
+1. **Prefer MCP Tools:** Use MCP tools (`watr_*`) whenever available. They provide native JSON arguments, typed responses, and eliminate escaping risks with multi-line Markdown.
+2. **Handle Context:** Use friendly handles (`login-auth`, `db-pooling`) for key tasks. The server automatically prefixes handles with the task number (e.g. `12-login-auth`).
+3. **Semantic Querying:** Before creating duplicate work or searching for existing bugs, run `watr_search_tasks` / `watr search`.
+4. **Error Handling:**
+   - Auth errors: Run `watr login` (CLI).
+   - Project unconfigured: Run `watr_set_project` (MCP) or `watr project set` (CLI).
+   - Task claimed by another user: Check assignee before modifying.

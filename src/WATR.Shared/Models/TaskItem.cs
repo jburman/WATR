@@ -37,6 +37,9 @@ public class TaskItem
     
     public DateTime? ClosedAt { get; set; }
     
+    public byte[]? Embedding { get; set; }
+    public DateTime? EmbeddingUpdatedAt { get; set; }
+    
     // Navigation properties
     public Project? Project { get; set; }
     public User? AssignedTo { get; set; }

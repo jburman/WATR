@@ -28,6 +28,9 @@ namespace WATR.Shared.Json;
 [JsonSerializable(typeof(List<TaskNoteDto>))]
 [JsonSerializable(typeof(ProjectDto))]
 [JsonSerializable(typeof(CreateProjectRequest))]
+[JsonSerializable(typeof(TaskSearchResultDto))]
+[JsonSerializable(typeof(List<TaskSearchResultDto>))]
+[JsonSerializable(typeof(WatrStatusDto))]
 public partial class AppJsonContext : JsonSerializerContext
 {
 }

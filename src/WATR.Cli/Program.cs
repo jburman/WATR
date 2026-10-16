@@ -37,6 +37,8 @@ static async Task<int> CreateAndRunApp(ITypeRegistrar registrar, string[] args)
         
             config.AddCommand<ListCommand>("list");
         
+            config.AddCommand<SearchCommand>("search");
+        
             config.AddCommand<ShowCommand>("show");
         
             config.AddCommand<AddCommand>("add");
@@ -48,6 +50,8 @@ static async Task<int> CreateAndRunApp(ITypeRegistrar registrar, string[] args)
             config.AddCommand<DoneCommand>("done");
         
             config.AddCommand<NoteCommand>("note");
+        
+            config.AddCommand<McpCommand>("mcp");
         
             
         
