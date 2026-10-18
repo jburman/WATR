@@ -145,11 +145,47 @@ watr status
 
 ---
 
-## Integrating with Coding Agents (Antigravity, Claude Code, Cursor)
+## Setting Up a Project with the WATR Skill & MCP Server
 
-### 1. Configure the MCP Server (`watr mcp`)
+To get the most out of WATR as a task manager and decision-support system, each repository you work on should have:
+1. **A linked `.watr/settings.json` file** (so agents automatically know which WATR project corresponds to the repo).
+2. **The `watr mcp` server connected** (so agents can invoke `watr_*` tools natively over `stdio`).
+3. **The `watr` Skill installed** (so agents automatically know *when* and *how* to search past decisions, claim tasks, and offload architectural rationale using `watr_record_decision`).
 
-Once you have authenticated on your machine with `watr init` and `watr login`, register `watr mcp` in your coding agent's MCP configuration (for example, `~/.gemini/antigravity/mcp_config.json` in Antigravity):
+> [!TIP]
+> Because `watr mcp` runs locally over `stdio`, it automatically shares your CLI credentials (`~/.watr/tokens.dat`, including automatic token refresh) and detects the active project from `.watr/settings.json` in the workspace root. **No API keys or bearer tokens ever need to be hardcoded into MCP configuration files.**
+
+### Step 1: Initialize & Link Your Project Workspace
+
+Before starting your coding agent, ensure `watr` is on your `PATH`, logged in once on your machine, and linked inside your target project repository:
+
+```bash
+# 1. One-time machine setup: point to your WATR server and log in via browser passkey
+watr init https://your-watr-server.example.com
+watr login
+
+# 2. Inside your target git repository: create (or select) its WATR project
+cd /path/to/your-project
+watr project create "MyProject" --description "Architecture decisions and tasks for MyProject"
+watr project set "MyProject"
+```
+
+Running `watr project set "MyProject"` writes `.watr/settings.json` in your repository root:
+```json
+{
+  "ProjectName": "MyProject"
+}
+```
+Commit `.watr/settings.json` to version control so every developer and coding agent working in the repository automatically targets the right WATR project.
+
+---
+
+### Step 2A: Antigravity CLI (`agy`) & Antigravity IDE Setup
+
+Antigravity natively supports both **MCP Servers** (`mcp_config.json`) and on-demand **Skills** (`SKILL.md`).
+
+#### 1. Register the `watr` MCP Server in Antigravity
+Add `watr mcp` to your global Antigravity MCP configuration at **`~/.gemini/config/mcp_config.json`** (or `~/.gemini/antigravity/mcp_config.json` in Antigravity IDE):
 
 ```json
 {
@@ -161,23 +197,120 @@ Once you have authenticated on your machine with `watr init` and `watr login`, r
   }
 }
 ```
+*(If `watr` is not on your global `PATH`, specify the full path to the binary in `"command"`, e.g. `"C:\\tools\\watr\\watr.exe"`.)*
 
-> [!TIP]
-> Because `watr mcp` runs locally over `stdio`, it automatically shares `~/.watr/tokens.dat` (including automatic token refresh) and detects the active project from `.watr/settings.json` in the workspace root. No API keys or bearer tokens need to be hardcoded into `mcp_config.json`.
+#### 2. Install the WATR Skill for Antigravity
+Antigravity discovers project-scoped skills in **`.agents/skills/<skill-name>/SKILL.md`** (shared with your team via Git) and machine-global skills in **`~/.gemini/config/skills/<skill-name>/SKILL.md`**.
 
-### 2. Add the WATR Skill to Your Project
-
-To teach coding agents (like **Antigravity**) how to use WATR as both a task tracker and a decision support / context-offloading knowledge store—including semantic lookup of past architectural decisions, recording "why" rationale, task handle conventions, and separating **Task Body (Definition of Done & Context)** from **Task Notes (Activity & Decision Log)**—copy the [`skills/watr`](skills/watr/SKILL.md) directory into your target project's `.agents/skills/` folder (or install it globally):
-
+**Option A — Install into your project repository (Recommended for teams):**
 ```powershell
-# Copy into a project workspace (recommended for team sharing via Git)
-Copy-Item -Recurse -Force ./skills/watr <path-to-your-project>/.agents/skills/watr
-
-# Or install globally for Antigravity on your machine
-Copy-Item -Recurse -Force ./skills/watr ~/.gemini/config/skills/watr
+# PowerShell
+New-Item -ItemType Directory -Force -Path /path/to/your-project/.agents/skills/watr
+Copy-Item -Force ./skills/watr/SKILL.md /path/to/your-project/.agents/skills/watr/SKILL.md
+```
+```bash
+# Bash / macOS / Linux
+mkdir -p /path/to/your-project/.agents/skills/watr
+cp ./skills/watr/SKILL.md /path/to/your-project/.agents/skills/watr/SKILL.md
 ```
 
-### 3. Available MCP Tools
+**Option B — Install globally for all Antigravity sessions on your machine:**
+```powershell
+# PowerShell
+New-Item -ItemType Directory -Force -Path ~/.gemini/config/skills/watr
+Copy-Item -Force ./skills/watr/SKILL.md ~/.gemini/config/skills/watr/SKILL.md
+```
+```bash
+# Bash / macOS / Linux
+mkdir -p ~/.gemini/config/skills/watr
+cp ./skills/watr/SKILL.md ~/.gemini/config/skills/watr/SKILL.md
+```
+
+#### 3. (Optional) Add an Always-On Project Rule (`AGENTS.md` / `GEMINI.md`)
+While Antigravity automatically activates the `watr` skill when you mention WATR, tasks, or architectural decisions, you can also add a short rule to your project's `AGENTS.md` or `GEMINI.md` so the agent checks WATR unconditionally at the start of every task:
+```markdown
+## Task & Decision Tracking (WATR)
+- Before making architectural changes or answering "why" questions, search prior project decisions using `watr_search_tasks`.
+- Record new architectural or design decisions using `watr_record_decision` so rationale is offloaded from model context into WATR.
+```
+
+---
+
+### Step 2B: Claude Code Setup
+
+Claude Code supports `stdio` MCP servers (at the project or user level) as well as custom skills/commands and `CLAUDE.md` project memory.
+
+#### 1. Register the `watr` MCP Server in Claude Code
+
+Run the `claude mcp add` command from your terminal:
+
+```bash
+# Share the MCP configuration with your team (writes .mcp.json in the repo root):
+claude mcp add --scope project watr -- watr mcp
+
+# OR register globally for your user account across all repositories:
+claude mcp add --scope user watr -- watr mcp
+```
+
+If you use `--scope project`, Claude Code creates a **`.mcp.json`** file in the root of your repository that you can commit to Git:
+```json
+{
+  "mcpServers": {
+    "watr": {
+      "command": "watr",
+      "args": ["mcp"]
+    }
+  }
+}
+```
+
+Verify that Claude Code sees the server and all 14 `watr_*` tools by running:
+```bash
+claude mcp list
+```
+*(Or type `/mcp` inside an interactive Claude Code session.)*
+
+#### 2. Install the WATR Skill in Claude Code
+Claude Code discovers project skills in **`.claude/skills/<skill-name>/SKILL.md`** and personal/global skills in **`~/.claude/skills/<skill-name>/SKILL.md`**.
+
+**Option A — Install into your project repository (`.claude/skills/watr/SKILL.md`):**
+```powershell
+# PowerShell
+New-Item -ItemType Directory -Force -Path /path/to/your-project/.claude/skills/watr
+Copy-Item -Force ./skills/watr/SKILL.md /path/to/your-project/.claude/skills/watr/SKILL.md
+```
+```bash
+# Bash / macOS / Linux
+mkdir -p /path/to/your-project/.claude/skills/watr
+cp ./skills/watr/SKILL.md /path/to/your-project/.claude/skills/watr/SKILL.md
+```
+
+**Option B — Install globally for your user account (`~/.claude/skills/watr/SKILL.md`):**
+```powershell
+# PowerShell
+New-Item -ItemType Directory -Force -Path ~/.claude/skills/watr
+Copy-Item -Force ./skills/watr/SKILL.md ~/.claude/skills/watr/SKILL.md
+```
+```bash
+# Bash / macOS / Linux
+mkdir -p ~/.claude/skills/watr
+cp ./skills/watr/SKILL.md ~/.claude/skills/watr/SKILL.md
+```
+
+#### 3. (Optional) Reference WATR in `CLAUDE.md`
+To ensure Claude Code proactively consults WATR for architectural context and offloads decisions in every session, add the following section to your repository's **`CLAUDE.md`**:
+
+```markdown
+## WATR Task Management & Decision Support
+This repository uses WATR (`watr_*` MCP tools) as its task tracker and decision support knowledge store:
+- **Search First:** Before implementing features or answering "why" questions about the system, call `watr_search_tasks` (e.g., with `taskType: "Decision"`) to retrieve historical architectural decisions and context.
+- **Claim Active Work:** Use `watr_claim_task` before starting a tracked task and `watr_complete_task` (with a `verificationNote`) when finished.
+- **Offload Decisions:** Whenever an architectural decision or non-obvious trade-off is made, record it immediately with `watr_record_decision` (`title`, `handle`, `rationale`, `tags`, `supersedesHandle`).
+```
+
+---
+
+### Step 3: Available MCP Tools (`watr mcp`)
 
 | Tool Name | Mode | Parameters | Description |
 | :--- | :--- | :--- | :--- |
