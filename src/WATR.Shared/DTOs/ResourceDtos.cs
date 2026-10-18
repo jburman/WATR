@@ -11,6 +11,18 @@ public class ProjectDto
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }
     public List<string> TaskTypes { get; set; } = new();
+
+    public List<string> GetTaskSubTypes()
+    {
+        var subTypes = new List<string> { "Task" };
+        if (TaskTypes != null)
+        {
+            subTypes.AddRange(TaskTypes.Where(t =>
+                !string.IsNullOrWhiteSpace(t) &&
+                !string.Equals(t.Trim(), "Decision", StringComparison.OrdinalIgnoreCase)));
+        }
+        return subTypes.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+    }
 }
 
 public class CreateProjectRequest
@@ -48,6 +60,7 @@ public class TaskItemDto
     public DateTime? ClosedAt { get; set; }
     public List<string> Tags { get; set; } = new();
     public string? SupersededByHandle { get; set; }
+    public List<string> SupersedesHandles { get; set; } = new();
     public List<TaskNoteDto> Notes { get; set; } = new();
 }
 
@@ -64,6 +77,7 @@ public class TaskItemSummaryDto
     public DateTime UpdatedAt { get; set; }
     public List<string> Tags { get; set; } = new();
     public string? SupersededByHandle { get; set; }
+    public List<string> SupersedesHandles { get; set; } = new();
 }
 
 public class CreateTaskRequest
@@ -76,6 +90,7 @@ public class CreateTaskRequest
     public TaskItemStatus? Status { get; set; }
     public List<string>? Tags { get; set; }
     public string? SupersededByHandle { get; set; }
+    public List<string>? SupersedesHandles { get; set; }
 }
 
 public class UpdateTaskRequest
@@ -90,6 +105,7 @@ public class UpdateTaskRequest
     public string? AssignedToName { get; set; }
     public List<string>? Tags { get; set; }
     public string? SupersededByHandle { get; set; }
+    public List<string>? SupersedesHandles { get; set; }
 }
 
 public class ProjectMemberDto
@@ -111,6 +127,12 @@ public class PatchTaskRequest
     public Guid? AssignedToUserId { get; set; }
     public string? AssignedToName { get; set; }
     public List<string>? Tags { get; set; }
+    public string? SupersededByHandle { get; set; }
+    public List<string>? SupersedesHandles { get; set; }
+}
+
+public class ObsoleteDecisionRequest
+{
     public string? SupersededByHandle { get; set; }
 }
 

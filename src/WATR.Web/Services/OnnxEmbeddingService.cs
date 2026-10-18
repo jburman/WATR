@@ -256,6 +256,14 @@ public class OnnxEmbeddingService : IOnnxEmbeddingService
         {
             sb.AppendLine($"Tags: {string.Join(", ", task.Tags)}");
         }
+        if (task.SupersedesHandles != null && task.SupersedesHandles.Count > 0)
+        {
+            sb.AppendLine($"Supersedes: {string.Join(", ", task.SupersedesHandles)}");
+        }
+        if (task.Status == WATR.Shared.Enums.TaskItemStatus.Obsolete)
+        {
+            sb.AppendLine("Status: Obsolete");
+        }
         if (!string.IsNullOrWhiteSpace(task.SupersededByHandle))
         {
             sb.AppendLine($"Superseded by: {task.SupersededByHandle}");

@@ -46,6 +46,9 @@ public class UpdateCommand : AsyncCommand<UpdateCommand.Settings>
         [CommandOption("--superseded-by <HANDLE>")]
         public string? SupersededByHandle { get; set; }
 
+        [CommandOption("--supersedes <HANDLES>")]
+        public string? SupersedesHandles { get; set; }
+
         [CommandOption("--json")]
         public bool Json { get; set; }
     }
@@ -66,6 +69,10 @@ public class UpdateCommand : AsyncCommand<UpdateCommand.Settings>
             ? null
             : settings.Tags.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToList();
 
+        var supersedes = string.IsNullOrWhiteSpace(settings.SupersedesHandles)
+            ? null
+            : settings.SupersedesHandles.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToList();
+
         var request = new PatchTaskRequest
         {
             Title = settings.Title,
@@ -75,7 +82,8 @@ public class UpdateCommand : AsyncCommand<UpdateCommand.Settings>
             TaskHandle = settings.TaskHandle,
             TaskType = settings.TaskType,
             Tags = tags,
-            SupersededByHandle = settings.SupersededByHandle
+            SupersededByHandle = settings.SupersededByHandle,
+            SupersedesHandles = supersedes
         };
 
         try

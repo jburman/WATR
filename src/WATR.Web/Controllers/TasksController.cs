@@ -137,6 +137,28 @@ public class TasksController : ApiControllerBase
         }
     }
 
+    [HttpPut("{id}")]
+    public async Task<ActionResult<TaskItemDto>> UpdateTask(Guid id, UpdateTaskRequest request)
+    {
+        var userIdStr = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (userIdStr == null) return Unauthorized();
+        var userId = Guid.Parse(userIdStr);
+
+        try
+        {
+            var updated = await _taskService.UpdateTaskAsync(id, request, userId);
+            return Ok(updated);
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return Forbid();
+        }
+        catch (Exception ex)
+        {
+            return BadRequest(ex.Message);
+        }
+    }
+
     [HttpPatch("{id}")]
     public async Task<ActionResult<TaskItemDto>> PatchTask(Guid id, PatchTaskRequest request)
     {
@@ -149,21 +171,49 @@ public class TasksController : ApiControllerBase
             var task = await _taskService.GetTaskAsync(id, userId);
             if (task == null) return NotFound();
 
+            var resolvedStatus = request.Status
+                ?? (!string.IsNullOrWhiteSpace(request.SupersededByHandle) && string.IsNullOrWhiteSpace(task.SupersededByHandle)
+                    ? TaskItemStatus.Obsolete
+                    : task.Status);
+
             var updateRequest = new UpdateTaskRequest
             {
                 Title = request.Title ?? task.Title,
                 Body = request.Body ?? task.Body,
                 TaskHandle = request.TaskHandle ?? task.TaskHandle,
                 TaskType = request.TaskType ?? task.TaskType,
-                Status = request.Status ?? task.Status,
+                Status = resolvedStatus,
                 Priority = request.Priority ?? task.Priority,
                 AssignedToUserId = request.AssignedToUserId ?? task.AssignedToUserId,
                 AssignedToName = request.AssignedToName ?? task.AssignedToName,
                 Tags = request.Tags ?? task.Tags,
-                SupersededByHandle = request.SupersededByHandle ?? task.SupersededByHandle
+                SupersededByHandle = request.SupersededByHandle ?? task.SupersededByHandle,
+                SupersedesHandles = request.SupersedesHandles
             };
 
             var updated = await _taskService.UpdateTaskAsync(id, updateRequest, userId);
+            return Ok(updated);
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return Forbid();
+        }
+        catch (Exception ex)
+        {
+            return BadRequest(ex.Message);
+        }
+    }
+
+    [HttpPost("{id}/obsolete")]
+    public async Task<ActionResult<TaskItemDto>> ObsoleteDecision(Guid id, [FromBody] ObsoleteDecisionRequest? request = null)
+    {
+        var userIdStr = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (userIdStr == null) return Unauthorized();
+        var userId = Guid.Parse(userIdStr);
+
+        try
+        {
+            var updated = await _taskService.MarkDecisionObsoleteAsync(id, request?.SupersededByHandle, userId);
             return Ok(updated);
         }
         catch (UnauthorizedAccessException)

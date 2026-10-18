@@ -76,10 +76,11 @@ public class WatrMcpTools
     }
 
     [McpServerTool(Name = "watr_create_project", ReadOnly = false, Destructive = false)]
-    [Description("Create a new project in WATR and link it to the current workspace.")]
+    [Description("Create a new project in WATR (always includes 'Task' and 'Decision' types, plus optional custom Task sub-types) and link it to the current workspace.")]
     public async Task<ProjectDto> CreateProjectAsync(
         [Description("Unique project name")] string name,
         [Description("Optional project description")] string? description = null,
+        [Description("Optional comma-separated custom Task sub-types (e.g. 'Epic,Bug'). 'Task' and 'Decision' are always included.")] string? taskTypes = null,
         CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(name))
@@ -92,7 +93,8 @@ public class WatrMcpTools
             var request = new CreateProjectRequest
             {
                 Name = name.Trim(),
-                Description = description ?? string.Empty
+                Description = description ?? string.Empty,
+                TaskTypes = ParseTags(taskTypes) ?? new List<string>()
             };
             var created = await _api.PostAsync<ProjectDto>("api/v1/projects", request);
 
@@ -109,6 +111,41 @@ public class WatrMcpTools
         catch (Exception ex)
         {
             throw new McpException($"Failed to create project '{name}': {ex.Message}", ex);
+        }
+    }
+
+    [McpServerTool(Name = "watr_update_project", ReadOnly = false, Destructive = false)]
+    [Description("Update a project's description or configured Task sub-types ('Task' and 'Decision' are always preserved).")]
+    public async Task<ProjectDto> UpdateProjectAsync(
+        [Description("Comma-separated Task sub-types to configure on the project (e.g. 'Task,Epic,Bug'). 'Task' and 'Decision' are always included.")] string? taskTypes = null,
+        [Description("Optional updated project description")] string? description = null,
+        [Description("Optional new project name")] string? newName = null,
+        [Description("Project name to update (defaults to active project if omitted)")] string? project = null,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var projectDto = await ResolveProjectDtoAsync(project, cancellationToken);
+            var updatedTypes = !string.IsNullOrWhiteSpace(taskTypes)
+                ? ParseTags(taskTypes)!
+                : projectDto.TaskTypes;
+
+            var request = new UpdateProjectRequest
+            {
+                Name = string.IsNullOrWhiteSpace(newName) ? projectDto.Name : newName.Trim(),
+                Description = description ?? projectDto.Description,
+                TaskTypes = updatedTypes
+            };
+
+            return await _api.PutAsync<ProjectDto>($"api/v1/projects/{projectDto.Id}", request);
+        }
+        catch (McpException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            throw new McpException($"Failed to update project: {ex.Message}", ex);
         }
     }
 
@@ -152,10 +189,10 @@ public class WatrMcpTools
     [Description("List tasks or decision records within a project with optional filtering by status, priority, taskType, tag, and assignment.")]
     public async Task<List<TaskItemSummaryDto>> ListTasksAsync(
         [Description("Project name (defaults to active project if omitted)")] string? project = null,
-        [Description("Filter by task status: Open, InProgress, Completed, Blocked, Cancelled")] string? status = null,
+        [Description("Filter by status: Open, InProgress, Completed, Blocked, Cancelled, Obsolete")] string? status = null,
         [Description("Filter by priority: None, Low, Medium, High, Critical")] string? priority = null,
         [Description("Filter to tasks assigned to me ('me') or null for all")] string? assignedTo = null,
-        [Description("Filter by task type (e.g. 'Task', 'Epic', 'Bug', 'Decision')")] string? taskType = null,
+        [Description("Filter by type (e.g. 'Task', 'Epic', 'Bug', 'Decision', or '!Decision' for all non-decision tasks)")] string? taskType = null,
         [Description("Filter by tag or component (e.g. 'auth', 'OnnxEmbeddingService.cs')")] string? tag = null,
         [Description("Page number (default: 1)")] int page = 1,
         [Description("Page size (default: 50)")] int pageSize = 50,
@@ -211,8 +248,8 @@ public class WatrMcpTools
     public async Task<List<TaskSearchResultDto>> SearchTasksAsync(
         [Description("Natural language search query (e.g. 'implement auth tokens', 'fix database deadlock')")] string query,
         [Description("Project name (defaults to active project if omitted)")] string? project = null,
-        [Description("Filter by task status: Open, InProgress, Completed, Blocked, Cancelled")] string? status = null,
-        [Description("Filter by task type (e.g. 'Task', 'Epic', 'Bug', 'Decision')")] string? taskType = null,
+        [Description("Filter by status: Open, InProgress, Completed, Blocked, Cancelled, Obsolete")] string? status = null,
+        [Description("Filter by type (e.g. 'Task', 'Epic', 'Bug', 'Decision', or '!Decision' for all non-decision tasks)")] string? taskType = null,
         [Description("Filter by tag or component (e.g. 'auth', 'OnnxEmbeddingService.cs')")] string? tag = null,
         [Description("Maximum number of results to return (default: 10)")] int top = 10,
         [Description("Minimum cosine similarity score threshold 0.0 to 1.0 (default: 0.25)")] float minScore = 0.25f,
@@ -293,10 +330,11 @@ public class WatrMcpTools
         [Description("Unique task handle (e.g. 'PROJ-1', 'AUTH-42')")] string handle,
         [Description("Detailed task description or body content")] string? body = null,
         [Description("Task priority: None, Low, Medium, High, Critical")] string? priority = null,
-        [Description("Optional task category or type (e.g. 'Task', 'Epic', 'Bug', 'Decision')")] string? taskType = null,
-        [Description("Optional initial status: Open, InProgress, Completed, Blocked, Cancelled")] string? status = null,
+        [Description("Optional task sub-type or 'Decision' (defaults to 'Task')")] string? taskType = null,
+        [Description("Optional initial status: Open, InProgress, Completed, Blocked, Cancelled, Obsolete")] string? status = null,
         [Description("Optional comma-separated tags or related file paths (e.g. 'auth,OnnxEmbeddingService.cs')")] string? tags = null,
         [Description("Optional handle of a newer task/decision that supersedes this item")] string? supersededByHandle = null,
+        [Description("Optional comma-separated handles or GUIDs of one or more previous decisions/tasks that this item supersedes (marks them Obsolete and sets their SupersededByHandle)")] string? supersedesHandles = null,
         [Description("Project name (defaults to active project if omitted)")] string? project = null,
         CancellationToken cancellationToken = default)
     {
@@ -322,7 +360,8 @@ public class WatrMcpTools
                 TaskType = taskType,
                 Status = ParseStatus(status),
                 Tags = ParseTags(tags),
-                SupersededByHandle = string.IsNullOrWhiteSpace(supersededByHandle) ? null : supersededByHandle.Trim()
+                SupersededByHandle = string.IsNullOrWhiteSpace(supersededByHandle) ? null : supersededByHandle.Trim(),
+                SupersedesHandles = ParseTags(supersedesHandles)
             };
 
             return await _api.PostAsync<TaskItemDto>($"api/v1/projects/{projectDto.Id}/tasks", request);
@@ -338,13 +377,13 @@ public class WatrMcpTools
     }
 
     [McpServerTool(Name = "watr_record_decision", ReadOnly = false, Destructive = false)]
-    [Description("Record an architectural decision, trade-off rationale ('why X was chosen over Y'), or investigation summary as a Completed 'Decision' record for future semantic lookup.")]
+    [Description("Record an architectural decision, trade-off rationale ('why X was chosen over Y'), or investigation summary as a Completed 'Decision' record, optionally superseding one or more previous decisions (marking them Obsolete and pointing their SupersededByHandle to this new decision).")]
     public async Task<TaskItemDto> RecordDecisionAsync(
         [Description("Concise decision title (e.g. 'Use SQLite BLOB + SIMD for vector search')")] string title,
         [Description("Short kebab-case decision handle slug (e.g. 'adr-sqlite-vectors')")] string handle,
         [Description("Markdown body explaining context, options considered, decision rationale, and consequences")] string body,
         [Description("Optional comma-separated tags or affected file/component paths (e.g. 'search,sqlite,OnnxEmbeddingService.cs')")] string? tags = null,
-        [Description("Optional handle or GUID of an older decision that this decision supersedes")] string? supersedesHandle = null,
+        [Description("Optional comma-separated handles or GUIDs of one or more older decisions that this decision supersedes (marks them Obsolete and sets their SupersededByHandle)")] string? supersedesHandle = null,
         [Description("Project name (defaults to active project if omitted)")] string? project = null,
         CancellationToken cancellationToken = default)
     {
@@ -370,21 +409,11 @@ public class WatrMcpTools
                 TaskType = "Decision",
                 Priority = TaskPriority.Medium,
                 Status = TaskItemStatus.Completed,
-                Tags = ParseTags(tags)
+                Tags = ParseTags(tags),
+                SupersedesHandles = ParseTags(supersedesHandle)
             };
 
-            var created = await _api.PostAsync<TaskItemDto>($"api/v1/projects/{projectDto.Id}/tasks", createRequest);
-
-            if (!string.IsNullOrWhiteSpace(supersedesHandle) && !string.IsNullOrWhiteSpace(created.TaskHandle))
-            {
-                var oldId = await ResolveTaskIdAsync(supersedesHandle.Trim(), projectDto.Name, cancellationToken);
-                await _api.PatchAsync<TaskItemDto>($"api/v1/tasks/{oldId}", new PatchTaskRequest
-                {
-                    SupersededByHandle = created.TaskHandle
-                });
-            }
-
-            return created;
+            return await _api.PostAsync<TaskItemDto>($"api/v1/projects/{projectDto.Id}/tasks", createRequest);
         }
         catch (McpException)
         {
@@ -396,18 +425,47 @@ public class WatrMcpTools
         }
     }
 
+    [McpServerTool(Name = "watr_obsolete_decision", ReadOnly = false, Destructive = false)]
+    [Description("Mark a decision record as Obsolete (or superseded), optionally pointing its SupersededByHandle to a newer decision.")]
+    public async Task<TaskItemDto> ObsoleteDecisionAsync(
+        [Description("Decision ID (GUID) or handle to mark as obsolete")] string idOrHandle,
+        [Description("Optional handle or GUID of the newer decision that supersedes this record")] string? supersededByHandle = null,
+        [Description("Project name (defaults to active project if omitted)")] string? project = null,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(idOrHandle)) throw new McpException("Decision ID or handle is required.");
+
+        try
+        {
+            var taskId = await ResolveTaskIdAsync(idOrHandle, project, cancellationToken);
+            return await _api.PostAsync<TaskItemDto>($"api/v1/tasks/{taskId}/obsolete", new ObsoleteDecisionRequest
+            {
+                SupersededByHandle = string.IsNullOrWhiteSpace(supersededByHandle) ? null : supersededByHandle.Trim()
+            });
+        }
+        catch (McpException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            throw new McpException($"Failed to mark decision '{idOrHandle}' as obsolete: {ex.Message}", ex);
+        }
+    }
+
     [McpServerTool(Name = "watr_update_task", ReadOnly = false, Destructive = false)]
-    [Description("Update fields of an existing task.")]
+    [Description("Update fields of an existing task or decision.")]
     public async Task<TaskItemDto> UpdateTaskAsync(
         [Description("Task ID (GUID) or task handle")] string idOrHandle,
         [Description("New title")] string? title = null,
         [Description("New body / description")] string? body = null,
-        [Description("New status: Open, InProgress, Completed, Blocked, Cancelled")] string? status = null,
+        [Description("New status: Open, InProgress, Completed, Blocked, Cancelled, Obsolete")] string? status = null,
         [Description("New priority: None, Low, Medium, High, Critical")] string? priority = null,
         [Description("New task handle")] string? handle = null,
         [Description("New task type")] string? taskType = null,
         [Description("Optional comma-separated tags or related file paths")] string? tags = null,
         [Description("Optional handle of a newer task/decision that supersedes this item")] string? supersededByHandle = null,
+        [Description("Optional comma-separated handles or GUIDs of previous decisions/tasks that this item supersedes (marks them Obsolete and sets their SupersededByHandle)")] string? supersedesHandles = null,
         [Description("Project name (needed if idOrHandle is a handle)")] string? project = null,
         CancellationToken cancellationToken = default)
     {
@@ -430,7 +488,8 @@ public class WatrMcpTools
                 TaskHandle = handle,
                 TaskType = taskType,
                 Tags = ParseTags(tags),
-                SupersededByHandle = supersededByHandle
+                SupersededByHandle = supersededByHandle,
+                SupersedesHandles = ParseTags(supersedesHandles)
             };
 
             return await _api.PatchAsync<TaskItemDto>($"api/v1/tasks/{taskId}", patchRequest);
@@ -592,8 +651,14 @@ public class WatrMcpTools
     private static TaskItemStatus? ParseStatus(string? status)
     {
         if (string.IsNullOrWhiteSpace(status)) return null;
-        if (Enum.TryParse<TaskItemStatus>(status, true, out var s)) return s;
-        throw new McpException($"Invalid status '{status}'. Valid statuses: Open, InProgress, Completed, Blocked, Cancelled.");
+        var trimmed = status.Trim();
+        if (trimmed.Equals("Superseded", StringComparison.OrdinalIgnoreCase) ||
+            trimmed.Equals("Superceded", StringComparison.OrdinalIgnoreCase))
+        {
+            return TaskItemStatus.Obsolete;
+        }
+        if (Enum.TryParse<TaskItemStatus>(trimmed, true, out var s)) return s;
+        throw new McpException($"Invalid status '{status}'. Valid statuses: Open, InProgress, Completed, Blocked, Cancelled, Obsolete.");
     }
 
     private static List<string>? ParseTags(string? tags)

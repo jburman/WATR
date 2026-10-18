@@ -9,6 +9,33 @@
     }
     else
     {
+        @if (task.Status == TaskItemStatus.Obsolete || !string.IsNullOrWhiteSpace(task.SupersededByHandle) || (task.SupersedesHandles?.Any() == true) || (task.Tags?.Any() == true))
+        {
+            <RadzenStack Orientation="Orientation.Horizontal" Gap="0.5rem" AlignItems="AlignItems.Center" Wrap="FlexWrap.Wrap">
+                @if (!string.IsNullOrWhiteSpace(task.SupersededByHandle))
+                {
+                    <RadzenBadge BadgeStyle="BadgeStyle.Warning" Text="@($"Obsolete — Superseded by {task.SupersededByHandle}")" />
+                }
+                else if (task.Status == TaskItemStatus.Obsolete)
+                {
+                    <RadzenBadge BadgeStyle="BadgeStyle.Secondary" Text="Obsolete" />
+                }
+                @if (task.SupersedesHandles != null && task.SupersedesHandles.Any())
+                {
+                    @foreach (var s in task.SupersedesHandles)
+                    {
+                        <RadzenBadge BadgeStyle="BadgeStyle.Info" Text="@($"Supersedes: {s}")" />
+                    }
+                }
+                @if (task.Tags != null && task.Tags.Any())
+                {
+                    @foreach (var tag in task.Tags)
+                    {
+                        <RadzenBadge BadgeStyle="BadgeStyle.Light" Text="@tag" />
+                    }
+                }
+            </RadzenStack>
+        }
         <RadzenStack Orientation="Orientation.Horizontal" Gap="2rem" AlignItems="AlignItems.Start">
             <RadzenStack Style="flex: 2;">
                 <RadzenText TextStyle="TextStyle.Subtitle2" class="rz-color-primary-light">Description</RadzenText>

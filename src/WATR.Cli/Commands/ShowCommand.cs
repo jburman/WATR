@@ -43,10 +43,19 @@ public class ShowCommand : AsyncCommand<ShowCommand.Settings>
             grid.AddColumn(new GridColumn());
 
             grid.AddRow(new Text("ID:", new Style(Color.Grey)).LeftJustified(), new Text(task.Id.ToString()));
+            if (!string.IsNullOrWhiteSpace(task.TaskHandle))
+                grid.AddRow(new Text("Handle:", new Style(Color.Grey)).LeftJustified(), new Text(task.TaskHandle));
+            grid.AddRow(new Text("Type:", new Style(Color.Grey)).LeftJustified(), new Text(task.TaskType ?? "Task"));
             grid.AddRow(new Text("Title:", new Style(Color.Grey)).LeftJustified(), new Text(task.Title, new Style(Color.White, decoration: Decoration.Bold)));
             grid.AddRow(new Text("Status:", new Style(Color.Grey)).LeftJustified(), new Text(task.Status.ToString(), new Style(GetStatusColor(task.Status))));
             grid.AddRow(new Text("Priority:", new Style(Color.Grey)).LeftJustified(), new Text(task.Priority.ToString(), new Style(GetPriorityColor(task.Priority))));
             grid.AddRow(new Text("Assigned:", new Style(Color.Grey)).LeftJustified(), new Text(task.AssignedToDisplayName ?? "Unassigned"));
+            if (task.Tags != null && task.Tags.Count > 0)
+                grid.AddRow(new Text("Tags:", new Style(Color.Grey)).LeftJustified(), new Text(string.Join(", ", task.Tags)));
+            if (task.SupersedesHandles != null && task.SupersedesHandles.Count > 0)
+                grid.AddRow(new Text("Supersedes:", new Style(Color.Grey)).LeftJustified(), new Text(string.Join(", ", task.SupersedesHandles), new Style(Color.Aqua)));
+            if (!string.IsNullOrWhiteSpace(task.SupersededByHandle))
+                grid.AddRow(new Text("Superseded By:", new Style(Color.Grey)).LeftJustified(), new Text(task.SupersededByHandle, new Style(Color.Yellow)));
             grid.AddRow(new Text("Created:", new Style(Color.Grey)).LeftJustified(), new Text(task.CreatedAt.ToLocalTime().ToString("g")));
 
             var content = new Panel(grid)
@@ -94,6 +103,7 @@ public class ShowCommand : AsyncCommand<ShowCommand.Settings>
         Shared.Enums.TaskItemStatus.Completed => Color.Green,
         Shared.Enums.TaskItemStatus.Blocked => Color.Red,
         Shared.Enums.TaskItemStatus.Cancelled => Color.Grey,
+        Shared.Enums.TaskItemStatus.Obsolete => Color.Grey,
         _ => Color.White
     };
 

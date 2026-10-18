@@ -42,6 +42,8 @@ public class TaskItem
     [MaxLength(50)]
     public string? SupersededByHandle { get; set; }
 
+    public List<string> SupersedesHandles { get; set; } = new();
+
     public byte[]? Embedding { get; set; }
     public DateTime? EmbeddingUpdatedAt { get; set; }
     

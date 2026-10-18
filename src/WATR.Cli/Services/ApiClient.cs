@@ -61,6 +61,21 @@ public class ApiClient
         return (await response.Content.ReadFromJsonAsync(typeInfo))!;
     }
 
+    public async Task<T> PutAsync<T>(string path, object body)
+    {
+        var bodyTypeInfo = AppJsonContext.Default.GetTypeInfo(body.GetType());
+        if (bodyTypeInfo == null)
+        {
+            throw new InvalidOperationException($"Type {body.GetType()} is not registered in AppJsonContext.");
+        }
+
+        using var content = JsonContent.Create(body, bodyTypeInfo);
+        var response = await _http.PutAsync(path.TrimStart('/'), content);
+        await EnsureSuccess(response);
+        var typeInfo = (JsonTypeInfo<T>)AppJsonContext.Default.GetTypeInfo(typeof(T))!;
+        return (await response.Content.ReadFromJsonAsync(typeInfo))!;
+    }
+
     public async Task<T> PostAsync<T>(string path, object? body = null)
     {
         HttpContent? jsonContent = null;

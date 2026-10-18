@@ -95,7 +95,7 @@
     private async Task OnCreateProject()
     {
         var request = new CreateProjectRequest();
-        string taskTypesString = "Epic\nTask";
+        string taskTypesString = "Task\nEpic\nBug";
 
         var result = await DialogService.OpenAsync("Create New Project", ds =>
             @<RadzenStack Gap="1rem">
@@ -105,7 +105,7 @@
                 <RadzenFormField Text="Description">
                     <RadzenTextArea @bind-Value="request.Description" style="width: 100%;" Rows="3" />
                 </RadzenFormField>
-                <RadzenFormField Text="Task Types (one per line)">
+                <RadzenFormField Text="Task Sub-Types (one per line — 'Task' & 'Decision' are always included)">
                     <RadzenTextArea @bind-Value="taskTypesString" style="width: 100%;" Rows="3" />
                 </RadzenFormField>
                 <RadzenStack Orientation="Orientation.Horizontal" JustifyContent="JustifyContent.End" Gap="1rem">
@@ -156,7 +156,7 @@
             TaskTypes = project.TaskTypes.ToList()
         };
         
-        string taskTypesString = string.Join("\n", request.TaskTypes);
+        string taskTypesString = string.Join("\n", project.GetTaskSubTypes());
 
         var result = await DialogService.OpenAsync("Edit Project", ds =>
             @<RadzenStack Gap="1rem">
@@ -166,7 +166,7 @@
                 <RadzenFormField Text="Description">
                     <RadzenTextArea @bind-Value="request.Description" style="width: 100%;" Rows="3" />
                 </RadzenFormField>
-                <RadzenFormField Text="Task Types (one per line)">
+                <RadzenFormField Text="Task Sub-Types (one per line — 'Task' & 'Decision' are always included)">
                     <RadzenTextArea @bind-Value="taskTypesString" style="width: 100%;" Rows="5" />
                 </RadzenFormField>
                 <RadzenStack Orientation="Orientation.Horizontal" JustifyContent="JustifyContent.End" Gap="1rem">

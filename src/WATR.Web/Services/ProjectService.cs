@@ -17,13 +17,41 @@ public class ProjectService
         _logger = logger;
     }
 
+    public static List<string> NormalizeTaskTypes(IEnumerable<string>? requestedTypes, bool includeDefaultSubTypesWhenEmpty = false)
+    {
+        var list = (requestedTypes ?? Enumerable.Empty<string>())
+            .Where(t => !string.IsNullOrWhiteSpace(t))
+            .Select(t => t.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        if (list.Count == 0 && includeDefaultSubTypesWhenEmpty)
+        {
+            return new List<string> { "Task", "Epic", "Bug", "Decision" };
+        }
+
+        if (!list.Contains("Task", StringComparer.OrdinalIgnoreCase))
+        {
+            list.Insert(0, "Task");
+        }
+
+        if (!list.Contains("Decision", StringComparer.OrdinalIgnoreCase))
+        {
+            list.Add("Decision");
+        }
+
+        return list;
+    }
+
     public async Task<List<ProjectDto>> GetUserProjectsAsync(Guid userId)
     {
         using var db = await _dbFactory.CreateDbContextAsync();
-        return await db.Projects
+        var projects = await db.Projects
             .Where(p => p.Members.Any(m => m.UserId == userId))
             .OrderByDescending(p => p.UpdatedAt)
-            .Select(p => new ProjectDto
+            .ToListAsync();
+
+        return projects.Select(p => new ProjectDto
             {
                 Id = p.Id,
                 Name = p.Name,
@@ -31,9 +59,9 @@ public class ProjectService
                 CreatedByUserId = p.CreatedByUserId,
                 CreatedAt = p.CreatedAt,
                 UpdatedAt = p.UpdatedAt,
-                TaskTypes = p.TaskTypes
+                TaskTypes = NormalizeTaskTypes(p.TaskTypes, includeDefaultSubTypesWhenEmpty: true)
             })
-            .ToListAsync();
+            .ToList();
     }
 
     public async Task<ProjectDto?> GetProjectAsync(Guid projectId, Guid userId)
@@ -54,7 +82,7 @@ public class ProjectService
             CreatedByUserId = p.CreatedByUserId,
             CreatedAt = p.CreatedAt,
             UpdatedAt = p.UpdatedAt,
-            TaskTypes = p.TaskTypes
+            TaskTypes = NormalizeTaskTypes(p.TaskTypes, includeDefaultSubTypesWhenEmpty: true)
         };
     }
 
@@ -79,9 +107,9 @@ public class ProjectService
         }
 
         // Validate TaskTypes removal
-        var currentTypes = project.TaskTypes ?? new List<string>();
-        var newTypes = request.TaskTypes ?? new List<string>();
-        var removedTypes = currentTypes.Except(newTypes).ToList();
+        var currentTypes = NormalizeTaskTypes(project.TaskTypes);
+        var newTypes = NormalizeTaskTypes(request.TaskTypes);
+        var removedTypes = currentTypes.Except(newTypes, StringComparer.OrdinalIgnoreCase).ToList();
 
         if (removedTypes.Any())
         {
@@ -92,7 +120,7 @@ public class ProjectService
                 .ToListAsync();
 
             var violations = allTaskTypes
-                .Where(t => t != null && removedTypes.Contains(t))
+                .Where(t => t != null && removedTypes.Contains(t, StringComparer.OrdinalIgnoreCase))
                 .Distinct()
                 .ToList();
 
@@ -129,11 +157,13 @@ public class ProjectService
             .Where(p => p.Members.Any(m => m.UserId == userId));
 
         var totalCount = await query.CountAsync();
-        var items = await query
+        var rawItems = await query
             .OrderByDescending(p => p.UpdatedAt)
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
-            .Select(p => new ProjectDto
+            .ToListAsync();
+
+        var items = rawItems.Select(p => new ProjectDto
             {
                 Id = p.Id,
                 Name = p.Name,
@@ -141,9 +171,9 @@ public class ProjectService
                 CreatedByUserId = p.CreatedByUserId,
                 CreatedAt = p.CreatedAt,
                 UpdatedAt = p.UpdatedAt,
-                TaskTypes = p.TaskTypes
+                TaskTypes = NormalizeTaskTypes(p.TaskTypes, includeDefaultSubTypesWhenEmpty: true)
             })
-            .ToListAsync();
+            .ToList();
 
         return new PaginatedResponse<ProjectDto>
         {
@@ -167,9 +197,7 @@ public class ProjectService
             CreatedByUserId = userId,
             CreatedAt = DateTime.UtcNow,
             UpdatedAt = DateTime.UtcNow,
-            TaskTypes = request.TaskTypes != null && request.TaskTypes.Any() 
-                ? request.TaskTypes 
-                : new List<string> { "Epic", "Task", "Bug", "Decision" }
+            TaskTypes = NormalizeTaskTypes(request.TaskTypes, includeDefaultSubTypesWhenEmpty: true)
         };
 
         project.Members.Add(new ProjectMember

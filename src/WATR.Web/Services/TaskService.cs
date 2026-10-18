@@ -64,7 +64,18 @@ public class TaskService
         if (!string.IsNullOrWhiteSpace(taskTypeFilter))
         {
             var normalizedType = taskTypeFilter.Trim().ToLower();
-            query = query.Where(t => t.TaskType != null && t.TaskType.ToLower() == normalizedType);
+            if (normalizedType == "!decision")
+            {
+                query = query.Where(t => t.TaskType == null || t.TaskType.ToLower() != "decision");
+            }
+            else if (normalizedType == "task")
+            {
+                query = query.Where(t => t.TaskType == null || t.TaskType.ToLower() == "task");
+            }
+            else
+            {
+                query = query.Where(t => t.TaskType != null && t.TaskType.ToLower() == normalizedType);
+            }
         }
 
         if (!string.IsNullOrWhiteSpace(tagFilter))
@@ -87,14 +98,15 @@ public class TaskService
                     Id = t.Id,
                     TaskNumber = t.TaskNumber,
                     TaskHandle = t.TaskHandle,
-                    TaskType = t.TaskType,
+                    TaskType = string.IsNullOrWhiteSpace(t.TaskType) ? "Task" : t.TaskType,
                     Title = t.Title,
                     Status = t.Status,
                     Priority = t.Priority,
                     AssignedToDisplayName = t.AssignedTo != null ? t.AssignedTo.DisplayName : t.AssignedToName,
                     UpdatedAt = t.UpdatedAt,
                     Tags = t.Tags ?? new List<string>(),
-                    SupersededByHandle = t.SupersededByHandle
+                    SupersededByHandle = t.SupersededByHandle,
+                    SupersedesHandles = t.SupersedesHandles ?? new List<string>()
                 })
                 .ToList();
 
@@ -117,14 +129,15 @@ public class TaskService
                 Id = t.Id,
                 TaskNumber = t.TaskNumber,
                 TaskHandle = t.TaskHandle,
-                TaskType = t.TaskType,
+                TaskType = string.IsNullOrWhiteSpace(t.TaskType) ? "Task" : t.TaskType,
                 Title = t.Title,
                 Status = t.Status,
                 Priority = t.Priority,
                 AssignedToDisplayName = t.AssignedTo != null ? t.AssignedTo.DisplayName : t.AssignedToName,
                 UpdatedAt = t.UpdatedAt,
                 Tags = t.Tags,
-                SupersededByHandle = t.SupersededByHandle
+                SupersededByHandle = t.SupersededByHandle,
+                SupersedesHandles = t.SupersedesHandles
             })
             .ToListAsync();
 
@@ -187,8 +200,9 @@ public class TaskService
                     handle = $"{nextNumber}-{handle}";
                 }
 
+                var resolvedTaskType = string.IsNullOrWhiteSpace(request.TaskType) ? "Task" : request.TaskType.Trim();
                 var initialStatus = request.Status
-                    ?? (string.Equals(request.TaskType, "Decision", StringComparison.OrdinalIgnoreCase)
+                    ?? (string.Equals(resolvedTaskType, "Decision", StringComparison.OrdinalIgnoreCase)
                         ? TaskItemStatus.Completed
                         : TaskItemStatus.Open);
 
@@ -199,25 +213,39 @@ public class TaskService
                     Title = request.Title,
                     Body = request.Body,
                     TaskHandle = handle,
-                    TaskType = request.TaskType,
+                    TaskType = resolvedTaskType,
                     Priority = request.Priority,
                     Status = initialStatus,
                     CreatedByUserId = userId,
                     CreatedAt = DateTime.UtcNow,
                     UpdatedAt = DateTime.UtcNow,
-                    ClosedAt = (initialStatus == TaskItemStatus.Completed || initialStatus == TaskItemStatus.Cancelled)
+                    ClosedAt = IsClosedStatus(initialStatus)
                         ? DateTime.UtcNow
                         : null,
                     Tags = request.Tags ?? new List<string>(),
                     SupersededByHandle = request.SupersededByHandle,
+                    SupersedesHandles = request.SupersedesHandles ?? new List<string>(),
                     TaskNumber = nextNumber
                 };
 
                 db.TaskItems.Add(task);
+
+                var supersededTaskIds = new List<Guid>();
+                if (request.SupersedesHandles != null && request.SupersedesHandles.Count > 0)
+                {
+                    supersededTaskIds = await ApplySupersedesAsync(db, projectId, task, request.SupersedesHandles);
+                }
+
                 await db.SaveChangesAsync();
 
                 await _hubContext.Clients.Group(projectId.ToString()).SendAsync("TaskCreated", task.Id);
                 _embeddingQueue.Enqueue(task.Id);
+
+                foreach (var supersededId in supersededTaskIds)
+                {
+                    await _hubContext.Clients.Group(projectId.ToString()).SendAsync("TaskUpdated", supersededId);
+                    _embeddingQueue.Enqueue(supersededId);
+                }
 
                 return MapToDto(task);
             }
@@ -254,7 +282,7 @@ public class TaskService
         task.Body = request.Body;
         task.Priority = request.Priority;
         task.TaskHandle = request.TaskHandle;
-        task.TaskType = request.TaskType;
+        task.TaskType = string.IsNullOrWhiteSpace(request.TaskType) ? "Task" : request.TaskType.Trim();
         if (request.Tags != null)
         {
             task.Tags = request.Tags;
@@ -275,9 +303,9 @@ public class TaskService
         if (task.Status != request.Status)
         {
             task.Status = request.Status;
-            if (task.Status == TaskItemStatus.Completed || task.Status == TaskItemStatus.Cancelled)
+            if (IsClosedStatus(task.Status))
             {
-                task.ClosedAt = DateTime.UtcNow;
+                task.ClosedAt ??= DateTime.UtcNow;
             }
             else
             {
@@ -285,11 +313,83 @@ public class TaskService
             }
         }
 
+        var supersededTaskIds = new List<Guid>();
+        if (request.SupersedesHandles != null)
+        {
+            supersededTaskIds = await ApplySupersedesAsync(db, task.ProjectId, task, request.SupersedesHandles);
+        }
+
         task.UpdatedAt = DateTime.UtcNow;
         await db.SaveChangesAsync();
 
         await _hubContext.Clients.Group(task.ProjectId.ToString()).SendAsync("TaskUpdated", task.Id);
         _embeddingQueue.Enqueue(task.Id);
+
+        foreach (var supersededId in supersededTaskIds)
+        {
+            await _hubContext.Clients.Group(task.ProjectId.ToString()).SendAsync("TaskUpdated", supersededId);
+            _embeddingQueue.Enqueue(supersededId);
+        }
+
+        return MapToDto(task);
+    }
+
+    public async Task<TaskItemDto> MarkDecisionObsoleteAsync(Guid taskId, string? supersededByHandle, Guid userId)
+    {
+        using var db = await _dbFactory.CreateDbContextAsync();
+        var task = await db.TaskItems
+            .Include(t => t.AssignedTo)
+            .Include(t => t.CreatedBy)
+            .Include(t => t.Notes)
+                .ThenInclude(n => n.Author)
+            .FirstOrDefaultAsync(t => t.Id == taskId);
+        if (task == null) throw new Exception("Task not found");
+
+        if (!await VerifyMembershipAsync(db, task.ProjectId, userId))
+        {
+            throw new UnauthorizedAccessException("User is not a member of this project");
+        }
+
+        task.Status = TaskItemStatus.Obsolete;
+        task.ClosedAt ??= DateTime.UtcNow;
+        task.UpdatedAt = DateTime.UtcNow;
+
+        Guid? supersedingTaskId = null;
+        if (!string.IsNullOrWhiteSpace(supersededByHandle))
+        {
+            var targetRef = supersededByHandle.Trim();
+            var supersedingTask = await FindTaskInProjectByRefAsync(db, task.ProjectId, targetRef);
+            if (supersedingTask != null && supersedingTask.Id != task.Id)
+            {
+                task.SupersededByHandle = supersedingTask.TaskHandle ?? targetRef;
+                if (!string.IsNullOrWhiteSpace(task.TaskHandle))
+                {
+                    var list = supersedingTask.SupersedesHandles?.ToList() ?? new List<string>();
+                    if (!list.Contains(task.TaskHandle, StringComparer.OrdinalIgnoreCase))
+                    {
+                        list.Add(task.TaskHandle);
+                        supersedingTask.SupersedesHandles = list;
+                        supersedingTask.UpdatedAt = DateTime.UtcNow;
+                        supersedingTaskId = supersedingTask.Id;
+                    }
+                }
+            }
+            else
+            {
+                task.SupersededByHandle = targetRef;
+            }
+        }
+
+        await db.SaveChangesAsync();
+
+        await _hubContext.Clients.Group(task.ProjectId.ToString()).SendAsync("TaskUpdated", task.Id);
+        _embeddingQueue.Enqueue(task.Id);
+
+        if (supersedingTaskId.HasValue)
+        {
+            await _hubContext.Clients.Group(task.ProjectId.ToString()).SendAsync("TaskUpdated", supersedingTaskId.Value);
+            _embeddingQueue.Enqueue(supersedingTaskId.Value);
+        }
 
         return MapToDto(task);
     }
@@ -308,9 +408,9 @@ public class TaskService
         if (task.Status != status)
         {
             task.Status = status;
-            if (task.Status == TaskItemStatus.Completed || task.Status == TaskItemStatus.Cancelled)
+            if (IsClosedStatus(task.Status))
             {
-                task.ClosedAt = DateTime.UtcNow;
+                task.ClosedAt ??= DateTime.UtcNow;
             }
             else
             {
@@ -503,7 +603,18 @@ public class TaskService
         if (!string.IsNullOrWhiteSpace(taskTypeFilter))
         {
             var normalizedType = taskTypeFilter.Trim().ToLower();
-            tasksQuery = tasksQuery.Where(t => t.TaskType != null && t.TaskType.ToLower() == normalizedType);
+            if (normalizedType == "!decision")
+            {
+                tasksQuery = tasksQuery.Where(t => t.TaskType == null || t.TaskType.ToLower() != "decision");
+            }
+            else if (normalizedType == "task")
+            {
+                tasksQuery = tasksQuery.Where(t => t.TaskType == null || t.TaskType.ToLower() == "task");
+            }
+            else
+            {
+                tasksQuery = tasksQuery.Where(t => t.TaskType != null && t.TaskType.ToLower() == normalizedType);
+            }
         }
 
         var candidateTasks = await tasksQuery.ToListAsync(cancellationToken);
@@ -551,14 +662,15 @@ public class TaskService
                         Id = task.Id,
                         TaskNumber = task.TaskNumber,
                         TaskHandle = task.TaskHandle,
-                        TaskType = task.TaskType,
+                        TaskType = string.IsNullOrWhiteSpace(task.TaskType) ? "Task" : task.TaskType,
                         Title = task.Title,
                         Status = task.Status,
                         Priority = task.Priority,
                         AssignedToDisplayName = task.AssignedTo?.DisplayName ?? task.AssignedToName,
                         UpdatedAt = task.UpdatedAt,
                         Tags = task.Tags ?? new List<string>(),
-                        SupersededByHandle = task.SupersededByHandle
+                        SupersededByHandle = task.SupersededByHandle,
+                        SupersedesHandles = task.SupersedesHandles ?? new List<string>()
                     },
                     SimilarityScore = score,
                     MatchedPreview = preview
@@ -574,9 +686,15 @@ public class TaskService
 
     private static string BuildMatchedPreview(TaskItem task, string query)
     {
-        var prefix = !string.IsNullOrWhiteSpace(task.SupersededByHandle)
-            ? $"[Superseded by {task.SupersededByHandle}] "
-            : string.Empty;
+        string prefix = string.Empty;
+        if (!string.IsNullOrWhiteSpace(task.SupersededByHandle))
+        {
+            prefix = $"[Superseded by {task.SupersededByHandle}] ";
+        }
+        else if (task.Status == TaskItemStatus.Obsolete)
+        {
+            prefix = "[Obsolete] ";
+        }
 
         var queryTerms = query
             .Split(new[] { ' ', '\t', '\r', '\n', ',', '.', ';', ':', '-', '_' }, StringSplitOptions.RemoveEmptyEntries)
@@ -654,6 +772,74 @@ public class TaskService
         return normalized.Substring(0, maxLength) + "...";
     }
 
+    private static bool IsClosedStatus(TaskItemStatus status) =>
+        status == TaskItemStatus.Completed ||
+        status == TaskItemStatus.Cancelled ||
+        status == TaskItemStatus.Obsolete;
+
+    private static async Task<TaskItem?> FindTaskInProjectByRefAsync(WatrDbContext db, Guid projectId, string targetRef)
+    {
+        if (Guid.TryParse(targetRef, out var refGuid))
+        {
+            return await db.TaskItems.FirstOrDefaultAsync(t => t.ProjectId == projectId && t.Id == refGuid);
+        }
+
+        var lowerRef = targetRef.ToLowerInvariant();
+        var exact = await db.TaskItems.FirstOrDefaultAsync(t =>
+            t.ProjectId == projectId &&
+            t.TaskHandle != null &&
+            t.TaskHandle.ToLower() == lowerRef);
+
+        if (exact != null) return exact;
+
+        var suffix = "-" + lowerRef;
+        return await db.TaskItems.FirstOrDefaultAsync(t =>
+            t.ProjectId == projectId &&
+            t.TaskHandle != null &&
+            t.TaskHandle.ToLower().EndsWith(suffix));
+    }
+
+    private static async Task<List<Guid>> ApplySupersedesAsync(
+        WatrDbContext db,
+        Guid projectId,
+        TaskItem currentTask,
+        IEnumerable<string>? supersedesRefs)
+    {
+        var updatedTaskIds = new List<Guid>();
+        if (supersedesRefs == null) return updatedTaskIds;
+
+        var normalizedRefs = supersedesRefs
+            .SelectMany(r => (r ?? string.Empty).Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+            .Where(r => !string.IsNullOrWhiteSpace(r))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        var resolvedHandles = new List<string>();
+        foreach (var targetRef in normalizedRefs)
+        {
+            var prevTask = await FindTaskInProjectByRefAsync(db, projectId, targetRef);
+            if (prevTask != null && prevTask.Id != currentTask.Id)
+            {
+                prevTask.Status = TaskItemStatus.Obsolete;
+                prevTask.SupersededByHandle = currentTask.TaskHandle;
+                prevTask.ClosedAt ??= DateTime.UtcNow;
+                prevTask.UpdatedAt = DateTime.UtcNow;
+                resolvedHandles.Add(prevTask.TaskHandle ?? targetRef);
+                updatedTaskIds.Add(prevTask.Id);
+            }
+            else
+            {
+                resolvedHandles.Add(targetRef);
+            }
+        }
+
+        currentTask.SupersedesHandles = resolvedHandles
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        return updatedTaskIds;
+    }
+
     private async Task<bool> VerifyMembershipAsync(WatrDbContext db, Guid projectId, Guid userId)
     {
         return await db.ProjectMembers.AnyAsync(m => m.ProjectId == projectId && m.UserId == userId);
@@ -667,7 +853,7 @@ public class TaskService
             ProjectId = t.ProjectId,
             TaskNumber = t.TaskNumber,
             TaskHandle = t.TaskHandle,
-            TaskType = t.TaskType,
+            TaskType = string.IsNullOrWhiteSpace(t.TaskType) ? "Task" : t.TaskType,
             Title = t.Title,
             Body = t.Body,
             Status = t.Status,
@@ -682,6 +868,7 @@ public class TaskService
             ClosedAt = t.ClosedAt,
             Tags = t.Tags ?? new List<string>(),
             SupersededByHandle = t.SupersededByHandle,
+            SupersedesHandles = t.SupersedesHandles ?? new List<string>(),
             Notes = t.Notes.Select(n => new TaskNoteDto
             {
                 Id = n.Id,

@@ -47,6 +47,9 @@ public class AddCommand : AsyncCommand<AddCommand.Settings>
 
         [CommandOption("--superseded-by <HANDLE>")]
         public string? SupersededByHandle { get; set; }
+
+        [CommandOption("--supersedes <HANDLES>")]
+        public string? SupersedesHandles { get; set; }
     }
 
     public override async Task<int> ExecuteAsync(CommandContext context, Settings settings, CancellationToken cancellationToken)
@@ -83,6 +86,10 @@ public class AddCommand : AsyncCommand<AddCommand.Settings>
         var tags = string.IsNullOrWhiteSpace(settings.Tags)
             ? null
             : settings.Tags.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToList();
+
+        var supersedes = string.IsNullOrWhiteSpace(settings.SupersedesHandles)
+            ? null
+            : settings.SupersedesHandles.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToList();
 
         var request = new CreateTaskRequest
         {

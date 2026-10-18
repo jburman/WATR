@@ -1274,30 +1274,41 @@ This phase adds a built-in Model Context Protocol (`stdio`) server to `watr` so 
 ### 10.6 Build & End-to-End Verification
 
 - [x] Build `WATR.Cli`: `dotnet build src/WATR.Cli`
-- [x] Test `watr mcp` with an MCP client or inspector by sending an `initialize` and `tools/list` JSON-RPC request over `stdin` and verifying that all 14 `watr_*` tools are returned on `stdout` with no extraneous console output.
-- [x] Invoke `watr_status`, `watr_create_task`, `watr_record_decision`, `watr_add_note`, and `watr_search_tasks` from Antigravity and verify real-time updates appear on the WATR Blazor dashboard.
+- [x] Test `watr mcp` with an MCP client or inspector by sending an `initialize` and `tools/list` JSON-RPC request over `stdin` and verifying that all 16 `watr_*` tools are returned on `stdout` with no extraneous console output.
+- [x] Invoke `watr_status`, `watr_create_task`, `watr_record_decision`, `watr_obsolete_decision`, `watr_add_note`, and `watr_search_tasks` from Antigravity and verify real-time updates appear on the WATR Blazor dashboard.
 
 ---
 
-## Phase 11: Decision Support System & Context Offloading Enhancements
+## Phase 11: Decision Support System, Tabbed UI & Superseding Workflow
 
-This phase enhances WATR's data model, ONNX embedding engine, REST API, CLI, and MCP tools so coding agents can offload architectural decisions, "why" rationale, and investigation findings out of model context and retrieve them with high precision.
+This phase enhances WATR's data model, ONNX embedding engine, Blazor UI, REST API, CLI, and MCP tools so that `Task` and `Decision` are always first-class built-in types (with customizable Task sub-types), the dashboard provides separate tabs for Tasks and Decisions, and Decisions can supersede one or more previous decisions (automatically marking superseded decisions as `Obsolete` and setting their `SupersededByHandle`).
 
-### 11.1 Add Decision Support Metadata (`Tags` & `SupersededByHandle`)
-- [x] Add `List<string> Tags` (primitive collection) and `[MaxLength(50)] string? SupersededByHandle` to `TaskItem` (`src/WATR.Shared/Models/TaskItem.cs`) and all task DTOs (`TaskItemDto`, `TaskItemSummaryDto`, `CreateTaskRequest`, `UpdateTaskRequest`, `PatchTaskRequest`).
-- [x] Add optional `TaskItemStatus? Status` to `CreateTaskRequest` (defaulting to `Completed` when `TaskType == "Decision"` and `Open` otherwise).
-- [x] Configure `entity.PrimitiveCollection(e => e.Tags);` in `WatrDbContext` and create EF Core migration `20261018140000_AddDecisionSupportMetadata`.
-- [x] Seed default `Project.TaskTypes` with `["Epic", "Task", "Bug", "Decision"]` in `ProjectService.CreateProjectAsync`.
+### 11.1 Built-in `Task` & `Decision` Types + Custom Task Sub-Types
+- [x] Add `ProjectService.NormalizeTaskTypes` (`src/WATR.Web/Services/ProjectService.cs`) to guarantee `"Task"` and `"Decision"` are always present on every project while allowing users to add or edit custom Task sub-types (e.g., `"Epic"`, `"Bug"`, `"Story"`).
+- [x] Add `ProjectDto.GetTaskSubTypes()` (`src/WATR.Shared/DTOs/ResourceDtos.cs`) to return `"Task"` plus all non-`"Decision"` custom sub-types for the Tasks tab and New Task dialog.
+- [x] Update project creation and settings dialogs in `MainLayout.razor`, `PUT /api/v1/projects/{id}`, `watr project create --task-types`, `watr_create_project`, and `watr_update_project` to manage custom Task sub-types while preserving `"Task"` and `"Decision"`.
 
-### 11.2 Multi-Chunk Sliding-Window ONNX Embeddings & Context-Aware Previews
+### 11.2 Decision Support Metadata (`Obsolete`, `Tags`, `SupersededByHandle` & `SupersedesHandles`)
+- [x] Add `TaskItemStatus.Obsolete = 5` (`src/WATR.Shared/Enums/TaskItemStatus.cs`).
+- [x] Add `List<string> Tags`, `[MaxLength(50)] string? SupersededByHandle`, and `List<string> SupersedesHandles` (primitive collections) to `TaskItem` (`src/WATR.Shared/Models/TaskItem.cs`) and all task DTOs (`TaskItemDto`, `TaskItemSummaryDto`, `CreateTaskRequest`, `UpdateTaskRequest`, `PatchTaskRequest`, `ObsoleteDecisionRequest`).
+- [x] Configure `entity.PrimitiveCollection(e => e.Tags)` and `entity.PrimitiveCollection(e => e.SupersedesHandles)` in `WatrDbContext` and update migration `20261018140000_AddDecisionSupportMetadata`.
+- [x] Implement `ApplySupersedesAsync` and `MarkDecisionObsoleteAsync` in `TaskService` (`src/WATR.Web/Services/TaskService.cs`): when a new or updated decision references one or more previous decisions in `SupersedesHandles`, automatically mark each referenced decision as `TaskItemStatus.Obsolete`, set its `SupersededByHandle` to the new decision's handle, set `ClosedAt`, enqueue background re-embedding, and broadcast SignalR `TaskUpdated` events.
+
+### 11.3 Tabbed Blazor Dashboard & Decision Lifecycle UI
+- [x] Update `Dashboard.razor` (`src/WATR.Web/Components/Pages/Dashboard.razor`) with a `RadzenTabs` layout:
+  - **Tasks Tab:** Displays all `Task` items and custom Task sub-types (`taskTypeFilter = "!Decision"`), with a Sub-Type filter dropdown, Status filter, semantic search bar, and "New Task" dialog.
+  - **Decisions Tab:** Displays `Decision` records (`taskTypeFilter = "Decision"`), showing Handle, Title, Status (`Active`/`Completed` vs `Obsolete`), `Superseded By` badge, `Supersedes` badges, Tags, semantic search bar, and "New Decision" dialog (with a multi-select dropdown to pick one or more existing project decisions that the new decision supersedes).
+- [x] Update `TaskDetailDialog.razor` and `TaskPreview.razor` to display and edit `SupersedesHandles`, `SupersededByHandle`, and provide a one-click **"Mark Obsolete"** button for active decisions.
+
+### 11.4 Multi-Chunk Sliding-Window ONNX Embeddings & Context-Aware Previews
 - [x] Upgrade `OnnxEmbeddingService.GenerateEmbeddingVectorAsync` (`src/WATR.Web/Services/OnnxEmbeddingService.cs`) to split documents longer than 254 content tokens into overlapping chunks (`ChunkOverlapTokens = 32`, `MaxChunks = 16`), mean-pooling each chunk and averaging + L2-normalizing the chunk vectors so long ADRs and investigation notes are never truncated at 256 tokens.
-- [x] Include `Tags` and `SupersededByHandle` in `OnnxEmbeddingService.BuildCompositeTaskText`.
-- [x] Enhance `TaskService.SearchTasksAsync` (`src/WATR.Web/Services/TaskService.cs`) to include `.Include(t => t.Notes)`, match notes/tags in the keyword fallback, prefix `[Superseded by {handle}] ` on superseded records, and surface `[Note] {snippet}` in `MatchedPreview` when a note matches the query terms better than the task body.
+- [x] Include `Tags`, `SupersededByHandle`, `SupersedesHandles`, and `Status: Obsolete` in `OnnxEmbeddingService.BuildCompositeTaskText`.
+- [x] Enhance `TaskService.SearchTasksAsync` (`src/WATR.Web/Services/TaskService.cs`) to prefix `[Obsolete]` and `[Superseded by {handle}]` on obsolete/superseded records and surface `[Note] {snippet}` in `MatchedPreview` when a note matches the query terms better than the task body.
 
-### 11.3 Filtering, Single-Call Decision Offloading & Single-Roundtrip Mutations
-- [x] Add `taskType` and `tag` query parameters to `GET /api/v1/projects/{projectId}/tasks` and `GET /api/v1/projects/{projectId}/tasks/search`.
-- [x] Fix `TasksController.PatchTask` (`src/WATR.Web/Controllers/TasksController.cs`) to map `TaskType`, `Tags`, `SupersededByHandle`, `AssignedToUserId`, and `AssignedToName`.
-- [x] Update `PATCH /api/v1/tasks/{id}`, `POST /api/v1/tasks/{id}/claim`, and `POST /api/v1/tasks/{id}/release` to return `ActionResult<TaskItemDto>` (`200 OK`) directly so CLI and MCP tools avoid extra `GET` round-trips.
-- [x] Add `watr_record_decision` to `WatrMcpTools` (`src/WATR.Cli/Mcp/WatrMcpTools.cs`) for single-call architectural decision recording and automatic superseding of older decision handles.
+### 11.5 REST API, CLI & MCP Tools for Decisions and Sub-Types
+- [x] Add `PUT /api/v1/tasks/{id}` and `POST /api/v1/tasks/{id}/obsolete` to `TasksController` (`src/WATR.Web/Controllers/TasksController.cs`), and update `PATCH /api/v1/tasks/{id}` to support `SupersedesHandles` and automatic `Obsolete` status transition.
+- [x] Update CLI commands (`watr add --supersedes`, `watr update --supersedes`, `watr project create --task-types`) to support multi-decision superseding, `Obsolete` status, and custom task sub-types.
+- [x] Update `WatrMcpTools` (`src/WATR.Cli/Mcp/WatrMcpTools.cs`) with `watr_record_decision` (accepting one or more comma-separated handles in `supersedesHandle`), `watr_obsolete_decision`, `watr_update_project`, and `supersedesHandles` support in `watr_create_task` and `watr_update_task`.
+
 
 

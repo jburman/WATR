@@ -18,11 +18,12 @@ It combines a real-time **Blazor Server dashboard**, a **REST API**, a fast sing
 
 ## Key Features
 
-- **Decision Support & Context Offloading:** Offload architectural decisions, design rationale ("why we built it this way"), investigation logs, and verification notes out of the model's active context window into a structured, searchable project memory.
+- **Decision Support & Context Offloading:** Offload architectural decisions, design rationale ("why we built it this way"), investigation logs, and verification notes out of the model's active context window into a structured, searchable project memory. Decisions can supersede one or more previous decisions—automatically marking older decisions as `Obsolete` and pointing their `SupersededByHandle` to the new decision.
+- **Built-In `Task` & `Decision` Types + Custom Sub-Types:** Every project always includes `Task` and `Decision` types, while allowing teams to configure custom `Task` sub-types (e.g., `Epic`, `Bug`, `Story`).
 - **Multi-Agent Task Coordination:** Plan epics, claim tasks, track statuses, and leave chronological notes so multiple agents and humans can collaborate without duplicating work.
-- **Local CPU Semantic Search:** Built-in ONNX embedding pipeline (`all-MiniLM-L6-v2` via `Microsoft.ML.OnnxRuntime` and `Microsoft.Extensions.AI`) that lazily embeds task titles, bodies, and notes in the background and performs hardware-accelerated SIMD cosine similarity (`TensorPrimitives.CosineSimilarity`) directly against SQLite `BLOB` vectors—enabling instant lookup of past decisions and tasks by meaning rather than exact keywords, with no external API keys, GPUs, or native SQLite C extensions required.
+- **Local CPU Semantic Search:** Built-in ONNX embedding pipeline (`all-MiniLM-L6-v2` via `Microsoft.ML.OnnxRuntime` and `Microsoft.Extensions.AI`) that lazily embeds task titles, bodies, tags, superseding links, and notes in the background and performs hardware-accelerated SIMD cosine similarity (`TensorPrimitives.CosineSimilarity`) directly against SQLite `BLOB` vectors—enabling instant lookup of past decisions and tasks by meaning rather than exact keywords, with no external API keys, GPUs, or native SQLite C extensions required.
 - **First-Class MCP Server (`watr mcp`):** Native `stdio` Model Context Protocol server built into the CLI. Coding agents like **Antigravity**, **Claude Code**, **Cursor**, and **Windsurf** can call strongly-typed `watr_*` tools directly—inheriting local CLI authentication and workspace project settings with zero secrets in config files and zero shell-escaping issues.
-- **Real-Time Human Dashboard:** Dark-mode Blazor Server UI (powered by Radzen & SignalR) that updates live as coding agents claim tasks, record decisions, post progress notes, or complete work.
+- **Real-Time Tabbed Human Dashboard:** Dark-mode Blazor Server UI (powered by Radzen & SignalR) featuring dedicated **Tasks** and **Decisions** tabs that update live as coding agents claim tasks, record or supersede decisions, post progress notes, or complete work.
 - **Agent-Friendly CLI (`watr`):** Rich terminal output via `Spectre.Console` for humans, plus `--json` output, `@file.md` Markdown ingestion, and deterministic exit codes for scripts and shell-based agents.
 - **Passkey + Device Code Authentication:** Passwordless **FIDO2/WebAuthn Passkeys** for browser login, paired with a GitHub-style **8-digit Device Code flow** (`watr login`) that issues auto-refreshing JWT tokens stored locally (encrypted with Windows DPAPI where supported).
 
@@ -144,7 +145,7 @@ watr init https://localhost:7084
 watr login
 
 # 3. Create a project and link the current workspace directory (.watr/settings.json)
-watr project create "WATR" --description "Core WATR development"
+watr project create "WATR" --description "Core WATR development" --task-types "Epic,Bug"
 watr project set "WATR"
 
 # 4. Verify connection and active project context
@@ -174,7 +175,7 @@ watr login
 
 # 2. Inside your target git repository: create (or select) its WATR project
 cd /path/to/your-project
-watr project create "MyProject" --description "Architecture decisions and tasks for MyProject"
+watr project create "MyProject" --description "Architecture decisions and tasks for MyProject" --task-types "Epic,Bug"
 watr project set "MyProject"
 ```
 
@@ -272,7 +273,7 @@ If you use `--scope project`, Claude Code creates a **`.mcp.json`** file in the 
 }
 ```
 
-Verify that Claude Code sees the server and all 14 `watr_*` tools by running:
+Verify that Claude Code sees the server and all 16 `watr_*` tools by running:
 ```bash
 claude mcp list
 ```
@@ -324,14 +325,16 @@ This repository uses WATR (`watr_*` MCP tools) as its task tracker and decision 
 | :--- | :--- | :--- | :--- |
 | `watr_status` | Read | *(none)* | Returns server URL, authenticated user, and active workspace project context. |
 | `watr_list_projects` | Read | `page?`, `pageSize?` | Lists all projects accessible to the authenticated user. |
-| `watr_create_project` | Write | `name`, `description?` | Creates a new project (with default types `Epic`, `Task`, `Bug`, `Decision`) and links it to `.watr/settings.json`. |
+| `watr_create_project` | Write | `name`, `description?`, `taskTypes?` | Creates a new project (`Task` and `Decision` are always included, plus any comma-separated custom `taskTypes` such as `"Epic,Bug"`) and links it to `.watr/settings.json`. |
+| `watr_update_project` | Write | `name?`, `description?`, `taskTypes?`, `project?` | Updates a project's name, description, or custom task sub-types (`Task` and `Decision` are always preserved). |
 | `watr_set_project` | Write | `project` | Links the current workspace directory (`.watr/settings.json`) to an existing project. |
-| `watr_list_tasks` | Read | `project?`, `status?`, `priority?`, `taskType?`, `tag?`, `assignedTo?`, `page?`, `pageSize?` | Lists tasks or decisions in a project with filtering by status, priority, taskType (`Decision`, `Epic`, `Task`, `Bug`), tag, and assignee (`"me"`). |
-| `watr_search_tasks` | Read | `query`, `project?`, `status?`, `taskType?`, `tag?`, `top?`, `minScore?` | **Semantic Search:** Ranks tasks, architectural decisions, and notes by meaning using cosine similarity and returns context-aware snippets (`[Note]` and `[Superseded by ...]`). |
-| `watr_get_task` | Read | `idOrHandle`, `project?` | Retrieves full task/decision details (Markdown body, tags, superseded-by handle, metadata, and notes) by GUID or handle. |
-| `watr_create_task` | Write | `title`, `handle`, `body?`, `priority?`, `taskType?`, `status?`, `tags?`, `supersededByHandle?`, `project?` | Creates a new task, Epic, Bug, or Decision (auto-prefixes `handle` with the project task number; defaults `status` to `Completed` when `taskType == "Decision"`). |
-| `watr_record_decision` | Write | `title`, `handle`, `rationale`, `tags?`, `supersedesHandle?`, `project?` | **Single-Call Decision Offloading:** Records an architectural or design decision (`TaskType = "Decision"`, `Status = "Completed"`) and optionally marks an older decision (`supersedesHandle`) as superseded. |
-| `watr_update_task` | Write | `idOrHandle`, `title?`, `body?`, `status?`, `priority?`, `handle?`, `taskType?`, `tags?`, `supersededByHandle?`, `project?` | Partially updates any fields of an existing task or decision by GUID or handle in a single round-trip. |
+| `watr_list_tasks` | Read | `project?`, `status?`, `priority?`, `taskType?`, `tag?`, `assignedTo?`, `page?`, `pageSize?` | Lists tasks or decisions in a project with filtering by status (`Open`, `InProgress`, `Completed`, `Blocked`, `Cancelled`, `Obsolete`), priority, taskType (`Decision`, `!Decision`, `Task`, `Epic`, `Bug`), tag, and assignee (`"me"`). |
+| `watr_search_tasks` | Read | `query`, `project?`, `status?`, `taskType?`, `tag?`, `top?`, `minScore?` | **Semantic Search:** Ranks tasks, architectural decisions, and notes by meaning using cosine similarity and returns context-aware snippets (`[Note]`, `[Obsolete]`, and `[Superseded by ...]`). |
+| `watr_get_task` | Read | `idOrHandle`, `project?` | Retrieves full task/decision details (Markdown body, tags, `supersededByHandle`, `supersedesHandles`, metadata, and notes) by GUID or handle. |
+| `watr_create_task` | Write | `title`, `handle`, `body?`, `priority?`, `taskType?`, `status?`, `tags?`, `supersededByHandle?`, `supersedesHandles?`, `project?` | Creates a new task, Epic, Bug, or Decision (auto-prefixes `handle` with the project task number; defaults `status` to `Completed` when `taskType == "Decision"`). |
+| `watr_record_decision` | Write | `title`, `handle`, `rationale`, `tags?`, `supersedesHandle?`, `project?` | **Single-Call Decision Offloading:** Records an architectural or design decision (`TaskType = "Decision"`, `Status = "Completed"`) and optionally accepts one or more comma-separated handles/IDs in `supersedesHandle` to automatically mark those previous decisions `Obsolete` with `SupersededByHandle` pointing to the new decision. |
+| `watr_obsolete_decision` | Write | `idOrHandle`, `supersededByHandle?`, `project?` | Marks an existing decision (or task) as `Obsolete` (`Status = "Obsolete"`) and optionally sets `supersededByHandle` to the newer decision that replaced it. |
+| `watr_update_task` | Write | `idOrHandle`, `title?`, `body?`, `status?`, `priority?`, `handle?`, `taskType?`, `tags?`, `supersededByHandle?`, `supersedesHandles?`, `project?` | Partially updates any fields of an existing task or decision by GUID or handle in a single round-trip. |
 | `watr_claim_task` | Write | `idOrHandle`, `project?` | Assigns a task to the current user and moves status to `InProgress`. |
 | `watr_release_task` | Write | `idOrHandle`, `project?` | Unassigns a claimed task and reverts status to `Open`. |
 | `watr_complete_task` | Write | `idOrHandle`, `verificationNote?`, `project?` | Optionally appends a final verification note and marks the task `Completed`. |
@@ -350,13 +353,13 @@ When a workspace is linked via `watr project set <NAME>` (stored in `.watr/setti
 | `watr logout` | Clear stored credentials (`~/.watr/tokens.dat`). |
 | `watr status` | Show current server, logged-in user, and linked workspace project. |
 | `watr project list` | List all available projects. |
-| `watr project create <NAME> [-d <DESC>]` | Create a new project. |
+| `watr project create <NAME> [-d <DESC>] [--task-types <CSV>]` | Create a new project (`Task` and `Decision` are always included). |
 | `watr project set <NAME>` | Link the current directory (`.watr/settings.json`) to `<NAME>`. |
-| `watr list [-p <NAME>] [-s <STATUS>] [-t|--type <TYPE>] [--tag <TAG>] [--json]` | List tasks or decisions in the project (`Open`, `InProgress`, `Completed`, `Blocked`, `Cancelled`). |
+| `watr list [-p <NAME>] [-s <STATUS>] [-t|--type <TYPE>] [--tag <TAG>] [--json]` | List tasks or decisions in the project (`Open`, `InProgress`, `Completed`, `Blocked`, `Cancelled`, `Obsolete`). |
 | `watr search <QUERY> [-p <NAME>] [-s <STATUS>] [--type <TYPE>] [--tag <TAG>] [-t|--top <TOP>] [--min-score <0..1>] [--json]` | Semantic vector search across tasks, decisions, and notes. |
-| `watr show <TASK_GUID> [--json]` | Display full task details, tags, superseded status, Markdown description, and chronological notes. |
-| `watr add <TITLE> -h <HANDLE> [-b <TEXT_OR_@FILE>] [--priority <LEVEL>] [-t|--type <TYPE>] [-s|--status <STATUS>] [--tags <CSV>] [--superseded-by <HANDLE>] [-p <NAME>]` | Create a task or decision record. `<HANDLE>` is required (e.g., `login-fix` becomes `42-login-fix`). |
-| `watr update <TASK_GUID> [--title <T>] [--body <TEXT_OR_@FILE>] [--status <S>] [--priority <P>] [--handle <H>] [--type <TYPE>] [--tags <CSV>] [--superseded-by <HANDLE>] [--json]` | Update one or more fields on an existing task or decision. |
+| `watr show <TASK_GUID> [--json]` | Display full task details, tags, supersedes/superseded-by status, Markdown description, and chronological notes. |
+| `watr add <TITLE> -h <HANDLE> [-b <TEXT_OR_@FILE>] [--priority <LEVEL>] [-t|--type <TYPE>] [-s|--status <STATUS>] [--tags <CSV>] [--supersedes <CSV>] [--superseded-by <HANDLE>] [-p <NAME>]` | Create a task or decision record. `<HANDLE>` is required (e.g., `login-fix` becomes `42-login-fix`). |
+| `watr update <TASK_GUID> [--title <T>] [--body <TEXT_OR_@FILE>] [--status <S>] [--priority <P>] [--handle <H>] [--type <TYPE>] [--tags <CSV>] [--supersedes <CSV>] [--superseded-by <HANDLE>] [--json]` | Update one or more fields on an existing task or decision. |
 | `watr claim <TASK_GUID>` | Assign the task to yourself and mark it `InProgress`. |
 | `watr note <TASK_GUID> <TEXT_OR_@FILE>` | Append a Markdown note or verification log to the task. |
 | `watr done <TASK_GUID>` | Mark the task as `Completed`. |
@@ -378,12 +381,13 @@ When a workspace is linked via `watr project set <NAME>` (stored in `.watr/setti
 
 All API endpoints under `/api/v1` use JWT Bearer authentication and return consistent JSON envelopes:
 
-- `GET /api/v1/projects` & `POST /api/v1/projects` — List and create projects.
-- `GET /api/v1/projects/{id}/tasks` — Paginated task list with `?status=`, `?priority=`, `?taskType=`, `?tag=`, and `?assignedTo=me` filters.
-- `GET /api/v1/projects/{id}/tasks/search?q={query}&top=10&minScore=0.25&status=...&taskType=...&tag=...` — Multi-chunk CPU ONNX semantic search with context-aware `MatchedPreview` (`[Note]` and `[Superseded by ...]`) and automatic substring fallback for newly created records pending background indexing.
+- `GET /api/v1/projects`, `POST /api/v1/projects`, `PUT /api/v1/projects/{id}` — List, create, and update projects (`Task` and `Decision` are always included alongside custom task sub-types).
+- `GET /api/v1/projects/{id}/tasks` — Paginated task/decision list with `?status=`, `?priority=`, `?taskType=`, `?tag=`, and `?assignedTo=me` filters.
+- `GET /api/v1/projects/{id}/tasks/search?q={query}&top=10&minScore=0.25&status=...&taskType=...&tag=...` — Multi-chunk CPU ONNX semantic search with context-aware `MatchedPreview` (`[Note]`, `[Obsolete]`, and `[Superseded by ...]`) and automatic substring fallback for newly created records pending background indexing.
 - `GET /api/v1/projects/{id}/tasks/handle/{handle}` — Resolve a task or decision by its human-readable handle (e.g., `42-login-fix`).
-- `POST /api/v1/projects/{id}/tasks` — Create a task or decision (defaults `status` to `Completed` when `taskType == "Decision"`) and enqueue background vector embedding.
-- `GET /api/v1/tasks/{id}`, `PUT /api/v1/tasks/{id}`, `PATCH /api/v1/tasks/{id}` — Inspect or update a task (mutations return the updated `TaskItemDto` directly).
+- `POST /api/v1/projects/{id}/tasks` — Create a task or decision (defaults `status` to `Completed` when `taskType == "Decision"`; if `supersedesHandles` is provided, marks each referenced decision `Obsolete` with `SupersededByHandle` pointing to the new decision) and enqueue background vector embedding.
+- `GET /api/v1/tasks/{id}`, `PUT /api/v1/tasks/{id}`, `PATCH /api/v1/tasks/{id}` — Inspect or update a task/decision (mutations return the updated `TaskItemDto` directly).
+- `POST /api/v1/tasks/{id}/obsolete` — Mark a decision (or task) as `Obsolete` and optionally record `supersededByHandle`.
 - `POST /api/v1/tasks/{id}/claim` & `POST /api/v1/tasks/{id}/release` — Claim or release task assignment (returns updated `TaskItemDto`).
 - `GET /api/v1/tasks/{id}/notes` & `POST /api/v1/tasks/{id}/notes` — List or append Markdown task notes.
 - `GET /api/v1/user/me` — Get current authenticated user profile.

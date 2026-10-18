@@ -21,6 +21,9 @@ public class ProjectCreateCommand : AsyncCommand<ProjectCreateCommand.Settings>
 
         [CommandOption("-d|--description <TEXT>")]
         public string Description { get; set; } = string.Empty;
+
+        [CommandOption("--task-types <TYPES>")]
+        public string? TaskTypes { get; set; }
     }
 
     public override async Task<int> ExecuteAsync(CommandContext context, Settings settings, CancellationToken cancellationToken)

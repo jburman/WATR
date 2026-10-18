@@ -131,6 +131,58 @@ public class TasksControllerTests : ControllerTestBase
     }
 
     [Fact]
+    public async Task CreateDecision_WithSupersedesHandles_ShouldMarkPreviousDecisionsObsoleteAndPointSupersededBy()
+    {
+        var user = await CreateUserAndAuthenticateAsync();
+        var project = await CreateProjectAsync(user.Id);
+
+        var old1Res = await _client.PostAsJsonAsync($"api/v1/projects/{project.Id}/tasks", new CreateTaskRequest
+        {
+            Title = "Initial auth token storage",
+            TaskHandle = "adr-auth-v1",
+            TaskType = "Decision",
+            Body = "Store plaintext tokens in config.json."
+        });
+        var old1 = await old1Res.Content.ReadFromJsonAsync<TaskItemDto>();
+
+        var old2Res = await _client.PostAsJsonAsync($"api/v1/projects/{project.Id}/tasks", new CreateTaskRequest
+        {
+            Title = "Temporary session cookie fallback",
+            TaskHandle = "adr-auth-v2",
+            TaskType = "Decision",
+            Body = "Use temporary session file."
+        });
+        var old2 = await old2Res.Content.ReadFromJsonAsync<TaskItemDto>();
+
+        var newDecisionRes = await _client.PostAsJsonAsync($"api/v1/projects/{project.Id}/tasks", new CreateTaskRequest
+        {
+            Title = "Use DPAPI-encrypted token store with device code flow",
+            TaskHandle = "adr-auth-v3",
+            TaskType = "Decision",
+            Body = "Replaces both v1 and v2 with DPAPI encryption.",
+            SupersedesHandles = new List<string> { old1!.TaskHandle!, old2!.TaskHandle! }
+        });
+        newDecisionRes.EnsureSuccessStatusCode();
+        var newDecision = await newDecisionRes.Content.ReadFromJsonAsync<TaskItemDto>();
+
+        Assert.NotNull(newDecision);
+        Assert.Equal(TaskItemStatus.Completed, newDecision.Status);
+        Assert.Contains(old1.TaskHandle!, newDecision.SupersedesHandles);
+        Assert.Contains(old2.TaskHandle!, newDecision.SupersedesHandles);
+
+        var updatedOld1 = await _client.GetFromJsonAsync<TaskItemDto>($"api/v1/tasks/{old1.Id}");
+        var updatedOld2 = await _client.GetFromJsonAsync<TaskItemDto>($"api/v1/tasks/{old2.Id}");
+
+        Assert.NotNull(updatedOld1);
+        Assert.Equal(TaskItemStatus.Obsolete, updatedOld1.Status);
+        Assert.Equal(newDecision.TaskHandle, updatedOld1.SupersededByHandle);
+
+        Assert.NotNull(updatedOld2);
+        Assert.Equal(TaskItemStatus.Obsolete, updatedOld2.Status);
+        Assert.Equal(newDecision.TaskHandle, updatedOld2.SupersededByHandle);
+    }
+
+    [Fact]
     public async Task ClaimTask_ShouldAssignUser()
     {
         var user = await CreateUserAndAuthenticateAsync();

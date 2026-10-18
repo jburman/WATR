@@ -13,97 +13,211 @@
 @implements IAsyncDisposable
 
 <RadzenStack Gap="1rem">
-    <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" JustifyContent="JustifyContent.SpaceBetween">
-        <RadzenText TextStyle="TextStyle.H4" class="rz-m-0">Tasks</RadzenText>
-        <RadzenButton Icon="add" Text="New Task" Click="@OnNewTask" Disabled="@(ProjectContext.SelectedProject == null)" />
-    </RadzenStack>
-
     @if (ProjectContext.SelectedProject == null)
     {
-        <RadzenAlert AlertStyle="AlertStyle.Info">Please select a project to view tasks.</RadzenAlert>
+        <RadzenAlert AlertStyle="AlertStyle.Info">Please select a project to view items.</RadzenAlert>
     }
     else
     {
-        <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="1rem" Class="rz-mb-4" Wrap="FlexWrap.Wrap">
-            <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="0.5rem">
-                <RadzenTextBox @bind-Value="searchQuery" Placeholder="Search tasks semantically..." Style="width: 320px;" @onkeydown="@OnSearchKeyDown" />
-                <RadzenButton Icon="search" ButtonStyle="ButtonStyle.Primary" Click="@OnSearch" Size="ButtonSize.Small" />
-                @if (!string.IsNullOrWhiteSpace(searchQuery))
-                {
-                    <RadzenButton Icon="close" ButtonStyle="ButtonStyle.Light" Click="@OnClearSearch" Size="ButtonSize.Small" />
-                }
-            </RadzenStack>
-            <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="0.5rem">
-                <RadzenLabel Text="Status:" Style="margin-right: 0.5rem;" />
-                <RadzenDropDown TValue="IEnumerable<TaskItemStatus>" @bind-Value="selectedStatuses" Data="@allStatuses" 
-                                Multiple="true" Chips="true" AllowClear="true" Placeholder="Select statuses..."
-                                Change="@OnStatusFilterChanged" Style="width: 400px;" PopupStyle="height: 260px;" MaxHeight="400px" />
-            </RadzenStack>
-        </RadzenStack>
+        <RadzenTabs @bind-SelectedIndex="selectedTabIndex" RenderMode="TabRenderMode.Client">
+            <Tabs>
+                <RadzenTabsItem Text="@($"Tasks ({tasks.Count})")" Icon="assignment">
+                    <RadzenStack Gap="1rem">
+                        <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" JustifyContent="JustifyContent.SpaceBetween" Gap="1rem" Wrap="FlexWrap.Wrap">
+                            <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="1rem" Wrap="FlexWrap.Wrap">
+                                <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="0.5rem">
+                                    <RadzenTextBox @bind-Value="searchQuery" Placeholder="Search tasks..." Style="width: 280px;" @onkeydown="@OnSearchKeyDown" />
+                                    <RadzenButton Icon="search" ButtonStyle="ButtonStyle.Primary" Click="@OnSearch" Size="ButtonSize.Small" />
+                                    @if (!string.IsNullOrWhiteSpace(searchQuery))
+                                    {
+                                        <RadzenButton Icon="close" ButtonStyle="ButtonStyle.Light" Click="@OnClearSearch" Size="ButtonSize.Small" />
+                                    }
+                                </RadzenStack>
+                                <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="0.5rem">
+                                    <RadzenLabel Text="Sub-Type:" />
+                                    <RadzenDropDown TValue="string" @bind-Value="selectedTaskSubType" Data="@(ProjectContext.SelectedProject.GetTaskSubTypes())"
+                                                    AllowClear="true" Placeholder="All Task Sub-Types" Change="@(_ => LoadTasks())" Style="width: 180px;" />
+                                </RadzenStack>
+                                <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="0.5rem">
+                                    <RadzenLabel Text="Status:" />
+                                    <RadzenDropDown TValue="IEnumerable<TaskItemStatus>" @bind-Value="selectedStatuses" Data="@allStatuses" 
+                                                    Multiple="true" Chips="true" AllowClear="true" Placeholder="Select statuses..."
+                                                    Change="@OnStatusFilterChanged" Style="width: 360px;" PopupStyle="height: 260px;" MaxHeight="400px" />
+                                </RadzenStack>
+                            </RadzenStack>
+                            <RadzenButton Icon="add" Text="New Task" Click="@OnNewTask" ButtonStyle="ButtonStyle.Primary" />
+                        </RadzenStack>
 
-        <RadzenDataGrid @ref="grid" Data="@tasks" TItem="TaskItemSummaryDto" KeyProperty="Id"
-                        RowExpand="@OnRowExpand" RowCollapse="@OnRowCollapse"
-                        AllowPaging="true" PageSize="20" AllowSorting="true"
-                        RowSelect="@OnRowSelect" class="rz-shadow-2">
-            <Template Context="t">
-                <TaskPreview TaskId="@t.Id" />
-            </Template>
-            <Columns>
-                <RadzenDataGridColumn TItem="TaskItemSummaryDto" Property="Id" Title="ID" Width="100px">
-                    <Template Context="t">
-                        @t.Id.ToString()[..8]
-                    </Template>
-                </RadzenDataGridColumn>
-                <RadzenDataGridColumn TItem="TaskItemSummaryDto" Property="TaskHandle" Title="Handle" Width="120px" />
-                <RadzenDataGridColumn TItem="TaskItemSummaryDto" Property="Title" Title="Title" />
-                <RadzenDataGridColumn TItem="TaskItemSummaryDto" Property="Status" Title="Status" Width="150px">
-                    <Template Context="t">
-                        @if (editingStatusId == t.Id)
-                        {
-                            <div @onclick:stopPropagation="true">
-                                <RadzenDropDown TValue="TaskItemStatus" Value="@t.Status" Data="@(Enum.GetValues<TaskItemStatus>())"
-                                                Change="@(args => OnStatusChange(t, (TaskItemStatus)args))"
-                                                Style="width: 100%; height: 30px; font-size: 0.875rem; padding: 0;" PopupStyle="height: 260px;" />
-                            </div>
-                        }
-                        else
-                        {
-                            <div @onclick="@(() => editingStatusId = t.Id)" @onclick:stopPropagation="true" style="cursor: pointer; width: 100%; height: 100%; display: flex; align-items: center;">
-                                <RadzenBadge BadgeStyle="@GetStatusStyle(t.Status)" Text="@t.Status.ToString()" />
-                            </div>
-                        }
-                    </Template>
-                </RadzenDataGridColumn>
-                <RadzenDataGridColumn TItem="TaskItemSummaryDto" Property="Priority" Title="Priority" Width="120px">
-                    <Template Context="t">
-                        <RadzenBadge BadgeStyle="@GetPriorityStyle(t.Priority)" Text="@t.Priority.ToString()" />
-                    </Template>
-                </RadzenDataGridColumn>
-                <RadzenDataGridColumn TItem="TaskItemSummaryDto" Property="AssignedToDisplayName" Title="Assigned To" Width="150px">
-                    <Template Context="t">
-                        @(t.AssignedToDisplayName ?? "Unassigned")
-                    </Template>
-                </RadzenDataGridColumn>
-                <RadzenDataGridColumn TItem="TaskItemSummaryDto" Property="UpdatedAt" Title="Updated" Width="180px">
-                    <Template Context="t">
-                        @t.UpdatedAt.ToLocalTime().ToString("g")
-                    </Template>
-                </RadzenDataGridColumn>
-            </Columns>
-        </RadzenDataGrid>
+                        <RadzenDataGrid @ref="grid" Data="@tasks" TItem="TaskItemSummaryDto" KeyProperty="Id"
+                                        RowExpand="@OnRowExpand" RowCollapse="@OnRowCollapse"
+                                        AllowPaging="true" PageSize="20" AllowSorting="true"
+                                        RowSelect="@OnRowSelect" class="rz-shadow-2">
+                            <Template Context="t">
+                                <TaskPreview TaskId="@t.Id" />
+                            </Template>
+                            <Columns>
+                                <RadzenDataGridColumn TItem="TaskItemSummaryDto" Property="Id" Title="ID" Width="100px">
+                                    <Template Context="t">
+                                        @t.Id.ToString()[..8]
+                                    </Template>
+                                </RadzenDataGridColumn>
+                                <RadzenDataGridColumn TItem="TaskItemSummaryDto" Property="TaskHandle" Title="Handle" Width="140px" />
+                                <RadzenDataGridColumn TItem="TaskItemSummaryDto" Property="TaskType" Title="Sub-Type" Width="120px" />
+                                <RadzenDataGridColumn TItem="TaskItemSummaryDto" Property="Title" Title="Title" />
+                                <RadzenDataGridColumn TItem="TaskItemSummaryDto" Property="Status" Title="Status" Width="150px">
+                                    <Template Context="t">
+                                        @if (editingStatusId == t.Id)
+                                        {
+                                            <div @onclick:stopPropagation="true">
+                                                <RadzenDropDown TValue="TaskItemStatus" Value="@t.Status" Data="@(Enum.GetValues<TaskItemStatus>())"
+                                                                Change="@(args => OnStatusChange(t, (TaskItemStatus)args))"
+                                                                Style="width: 100%; height: 30px; font-size: 0.875rem; padding: 0;" PopupStyle="height: 260px;" />
+                                            </div>
+                                        }
+                                        else
+                                        {
+                                            <div @onclick="@(() => editingStatusId = t.Id)" @onclick:stopPropagation="true" style="cursor: pointer; width: 100%; height: 100%; display: flex; align-items: center;">
+                                                <RadzenBadge BadgeStyle="@GetStatusStyle(t.Status)" Text="@t.Status.ToString()" />
+                                            </div>
+                                        }
+                                    </Template>
+                                </RadzenDataGridColumn>
+                                <RadzenDataGridColumn TItem="TaskItemSummaryDto" Property="Priority" Title="Priority" Width="120px">
+                                    <Template Context="t">
+                                        <RadzenBadge BadgeStyle="@GetPriorityStyle(t.Priority)" Text="@t.Priority.ToString()" />
+                                    </Template>
+                                </RadzenDataGridColumn>
+                                <RadzenDataGridColumn TItem="TaskItemSummaryDto" Property="AssignedToDisplayName" Title="Assigned To" Width="150px">
+                                    <Template Context="t">
+                                        @(t.AssignedToDisplayName ?? "Unassigned")
+                                    </Template>
+                                </RadzenDataGridColumn>
+                                <RadzenDataGridColumn TItem="TaskItemSummaryDto" Property="UpdatedAt" Title="Updated" Width="170px">
+                                    <Template Context="t">
+                                        @t.UpdatedAt.ToLocalTime().ToString("g")
+                                    </Template>
+                                </RadzenDataGridColumn>
+                            </Columns>
+                        </RadzenDataGrid>
+                    </RadzenStack>
+                </RadzenTabsItem>
+
+                <RadzenTabsItem Text="@($"Decisions ({decisions.Count})")" Icon="gavel">
+                    <RadzenStack Gap="1rem">
+                        <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" JustifyContent="JustifyContent.SpaceBetween" Gap="1rem" Wrap="FlexWrap.Wrap">
+                            <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="1rem" Wrap="FlexWrap.Wrap">
+                                <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="0.5rem">
+                                    <RadzenTextBox @bind-Value="decisionSearchQuery" Placeholder="Search decisions by rationale..." Style="width: 280px;" @onkeydown="@OnDecisionSearchKeyDown" />
+                                    <RadzenButton Icon="search" ButtonStyle="ButtonStyle.Primary" Click="@OnDecisionSearch" Size="ButtonSize.Small" />
+                                    @if (!string.IsNullOrWhiteSpace(decisionSearchQuery))
+                                    {
+                                        <RadzenButton Icon="close" ButtonStyle="ButtonStyle.Light" Click="@OnClearDecisionSearch" Size="ButtonSize.Small" />
+                                    }
+                                </RadzenStack>
+                                <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="0.5rem">
+                                    <RadzenLabel Text="Status:" />
+                                    <RadzenDropDown TValue="IEnumerable<TaskItemStatus>" @bind-Value="selectedDecisionStatuses" Data="@decisionStatuses"
+                                                    Multiple="true" Chips="true" AllowClear="true" Placeholder="All decision statuses..."
+                                                    Change="@(_ => LoadDecisions())" Style="width: 320px;" />
+                                </RadzenStack>
+                            </RadzenStack>
+                            <RadzenButton Icon="add" Text="New Decision" Click="@OnNewDecision" ButtonStyle="ButtonStyle.Secondary" />
+                        </RadzenStack>
+
+                        <RadzenDataGrid @ref="decisionsGrid" Data="@decisions" TItem="TaskItemSummaryDto" KeyProperty="Id"
+                                        RowExpand="@OnRowExpand" RowCollapse="@OnRowCollapse"
+                                        AllowPaging="true" PageSize="20" AllowSorting="true"
+                                        RowSelect="@OnRowSelect" class="rz-shadow-2">
+                            <Template Context="d">
+                                <TaskPreview TaskId="@d.Id" />
+                            </Template>
+                            <Columns>
+                                <RadzenDataGridColumn TItem="TaskItemSummaryDto" Property="Id" Title="ID" Width="100px">
+                                    <Template Context="d">
+                                        @d.Id.ToString()[..8]
+                                    </Template>
+                                </RadzenDataGridColumn>
+                                <RadzenDataGridColumn TItem="TaskItemSummaryDto" Property="TaskHandle" Title="Handle" Width="160px" />
+                                <RadzenDataGridColumn TItem="TaskItemSummaryDto" Property="Title" Title="Decision Title" />
+                                <RadzenDataGridColumn TItem="TaskItemSummaryDto" Property="Status" Title="Status" Width="140px">
+                                    <Template Context="d">
+                                        <RadzenBadge BadgeStyle="@GetStatusStyle(d.Status)" Text="@(d.Status == TaskItemStatus.Completed ? "Active" : d.Status.ToString())" />
+                                    </Template>
+                                </RadzenDataGridColumn>
+                                <RadzenDataGridColumn TItem="TaskItemSummaryDto" Property="SupersededByHandle" Title="Superseded By" Width="160px">
+                                    <Template Context="d">
+                                        @if (!string.IsNullOrWhiteSpace(d.SupersededByHandle))
+                                        {
+                                            <RadzenBadge BadgeStyle="BadgeStyle.Warning" Text="@d.SupersededByHandle" />
+                                        }
+                                        else
+                                        {
+                                            <span class="rz-color-base-500">—</span>
+                                        }
+                                    </Template>
+                                </RadzenDataGridColumn>
+                                <RadzenDataGridColumn TItem="TaskItemSummaryDto" Title="Supersedes" Width="180px">
+                                    <Template Context="d">
+                                        @if (d.SupersedesHandles != null && d.SupersedesHandles.Any())
+                                        {
+                                            <RadzenStack Orientation="Orientation.Horizontal" Gap="0.25rem" Wrap="FlexWrap.Wrap">
+                                                @foreach (var s in d.SupersedesHandles)
+                                                {
+                                                    <RadzenBadge BadgeStyle="BadgeStyle.Info" Text="@s" />
+                                                }
+                                            </RadzenStack>
+                                        }
+                                        else
+                                        {
+                                            <span class="rz-color-base-500">—</span>
+                                        }
+                                    </Template>
+                                </RadzenDataGridColumn>
+                                <RadzenDataGridColumn TItem="TaskItemSummaryDto" Title="Tags" Width="180px">
+                                    <Template Context="d">
+                                        @if (d.Tags != null && d.Tags.Any())
+                                        {
+                                            <RadzenStack Orientation="Orientation.Horizontal" Gap="0.25rem" Wrap="FlexWrap.Wrap">
+                                                @foreach (var tag in d.Tags)
+                                                {
+                                                    <RadzenBadge BadgeStyle="BadgeStyle.Secondary" Text="@tag" />
+                                                }
+                                            </RadzenStack>
+                                        }
+                                    </Template>
+                                </RadzenDataGridColumn>
+                                <RadzenDataGridColumn TItem="TaskItemSummaryDto" Property="UpdatedAt" Title="Updated" Width="170px">
+                                    <Template Context="d">
+                                        @d.UpdatedAt.ToLocalTime().ToString("g")
+                                    </Template>
+                                </RadzenDataGridColumn>
+                            </Columns>
+                        </RadzenDataGrid>
+                    </RadzenStack>
+                </RadzenTabsItem>
+            </Tabs>
+        </RadzenTabs>
     }
 </RadzenStack>
 
 @code {
     private RadzenDataGrid<TaskItemSummaryDto>? grid;
+    private RadzenDataGrid<TaskItemSummaryDto>? decisionsGrid;
     private List<TaskItemSummaryDto> tasks = new();
+    private List<TaskItemSummaryDto> decisions = new();
+    private List<TaskItemSummaryDto> allProjectDecisions = new();
     private HubConnection? hubConnection;
     private Guid currentUserId;
     private Guid? editingStatusId;
     private readonly HashSet<Guid> expandedTaskIds = new();
     private IEnumerable<TaskItemStatus> allStatuses = Enum.GetValues<TaskItemStatus>();
+    private IEnumerable<TaskItemStatus> decisionStatuses = new List<TaskItemStatus> { TaskItemStatus.Completed, TaskItemStatus.Obsolete, TaskItemStatus.Open };
     private IEnumerable<TaskItemStatus> selectedStatuses = new List<TaskItemStatus> { TaskItemStatus.Open, TaskItemStatus.InProgress };
+    private IEnumerable<TaskItemStatus> selectedDecisionStatuses = new List<TaskItemStatus> { TaskItemStatus.Completed, TaskItemStatus.Obsolete };
     private string searchQuery = string.Empty;
+    private string decisionSearchQuery = string.Empty;
+    private string? selectedTaskSubType;
+    private int selectedTabIndex = 0;
 
     [CascadingParameter]
     private Task<AuthenticationState> authenticationStateTask { get; set; } = default!;
@@ -127,7 +241,7 @@
         catch { /* Ignore storage errors */ }
 
         ProjectContext.OnProjectChanged += RefreshData;
-        await LoadTasks();
+        await LoadAllData();
 
         hubConnection = new HubConnectionBuilder()
             .WithUrl(Navigation.ToAbsoluteUri("/hubs/tasks"))
@@ -166,15 +280,22 @@
             {
                 await hubConnection.InvokeAsync("JoinProject", project.Id.ToString());
             }
-            await LoadTasks();
+            await LoadAllData();
             StateHasChanged();
         });
+    }
+
+    private async Task LoadAllData()
+    {
+        await LoadTasks();
+        await LoadDecisions();
     }
 
     private async Task LoadTasks()
     {
         if (ProjectContext.SelectedProject != null)
         {
+            var typeFilter = string.IsNullOrWhiteSpace(selectedTaskSubType) ? "!Decision" : selectedTaskSubType;
             if (!string.IsNullOrWhiteSpace(searchQuery))
             {
                 var searchResults = await TaskService.SearchTasksAsync(
@@ -183,14 +304,65 @@
                     null,
                     50,
                     0.2f,
-                    currentUserId);
+                    currentUserId,
+                    typeFilter);
 
                 tasks = searchResults.Select(r => r.Task).ToList();
             }
             else
             {
-                var response = await TaskService.GetTasksAsync(ProjectContext.SelectedProject.Id, selectedStatuses, null, null, currentUserId, 1, 100);
+                var response = await TaskService.GetTasksAsync(ProjectContext.SelectedProject.Id, selectedStatuses, null, null, currentUserId, 1, 100, typeFilter);
                 tasks = response.Items;
+            }
+        }
+    }
+
+    private async Task LoadDecisions()
+    {
+        if (ProjectContext.SelectedProject != null)
+        {
+            var allDecisionsResponse = await TaskService.GetTasksAsync(
+                ProjectContext.SelectedProject.Id,
+                null,
+                null,
+                null,
+                currentUserId,
+                1,
+                200,
+                "Decision");
+            allProjectDecisions = allDecisionsResponse.Items;
+
+            if (!string.IsNullOrWhiteSpace(decisionSearchQuery))
+            {
+                var searchResults = await TaskService.SearchTasksAsync(
+                    ProjectContext.SelectedProject.Id,
+                    decisionSearchQuery,
+                    null,
+                    50,
+                    0.2f,
+                    currentUserId,
+                    "Decision");
+
+                var items = searchResults.Select(r => r.Task).ToList();
+                if (selectedDecisionStatuses != null && selectedDecisionStatuses.Any())
+                {
+                    var statusSet = selectedDecisionStatuses.ToHashSet();
+                    items = items.Where(d => statusSet.Contains(d.Status)).ToList();
+                }
+                decisions = items;
+            }
+            else
+            {
+                var response = await TaskService.GetTasksAsync(
+                    ProjectContext.SelectedProject.Id,
+                    selectedDecisionStatuses,
+                    null,
+                    null,
+                    currentUserId,
+                    1,
+                    100,
+                    "Decision");
+                decisions = response.Items;
             }
         }
     }
@@ -214,14 +386,37 @@
         await LoadTasks();
     }
 
+    private async Task OnDecisionSearchKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+        {
+            await OnDecisionSearch();
+        }
+    }
+
+    private async Task OnDecisionSearch()
+    {
+        await LoadDecisions();
+    }
+
+    private async Task OnClearDecisionSearch()
+    {
+        decisionSearchQuery = string.Empty;
+        await LoadDecisions();
+    }
+
     private Task OnTaskEventReceivedAsync() =>
         InvokeAsync(async () =>
         {
-            await LoadTasks();
-            expandedTaskIds.IntersectWith(tasks.Select(t => t.Id));
+            await LoadAllData();
+            expandedTaskIds.IntersectWith(tasks.Concat(decisions).Select(t => t.Id));
             if (grid is not null && expandedTaskIds.Count > 0)
             {
                 await grid.ExpandRows(tasks.Where(t => expandedTaskIds.Contains(t.Id)));
+            }
+            if (decisionsGrid is not null && expandedTaskIds.Count > 0)
+            {
+                await decisionsGrid.ExpandRows(decisions.Where(d => expandedTaskIds.Contains(d.Id)));
             }
             StateHasChanged();
         });
@@ -232,7 +427,7 @@
 
     private async Task OnRowSelect(TaskItemSummaryDto t)
     {
-        var title = $"Task Details: {t.Id.ToString()[..8]}";
+        var title = $"Item Details: {t.Id.ToString()[..8]}";
         if (!string.IsNullOrEmpty(t.TaskHandle))
         {
             title += $" ({t.TaskHandle})";
@@ -244,13 +439,15 @@
 
         if (result == true)
         {
-            await LoadTasks();
+            await LoadAllData();
         }
     }
 
     private async Task OnNewTask()
     {
-        var newTask = new CreateTaskRequest { Title = "New Task" };
+        var subTypes = ProjectContext.SelectedProject?.GetTaskSubTypes() ?? new List<string> { "Task" };
+        var newTask = new CreateTaskRequest { Title = "New Task", TaskType = "Task" };
+        var tagsString = string.Empty;
         var result = await DialogService.OpenAsync("Create New Task", ds =>
             @<RadzenStack Gap="1rem">
                 <RadzenFormField Text="Title">
@@ -259,15 +456,15 @@
                 <RadzenFormField Text="Handle (Required)">
                     <RadzenTextBox @bind-Value="newTask.TaskHandle" Placeholder="e.g. login-page" />
                 </RadzenFormField>
+                <RadzenFormField Text="Task Sub-Type">
+                    <RadzenDropDown TValue="string" Data="@subTypes" @bind-Value="newTask.TaskType" />
+                </RadzenFormField>
                 <RadzenFormField Text="Priority">
                     <RadzenDropDown TValue="TaskPriority" Data="@(Enum.GetValues<TaskPriority>())" @bind-Value="newTask.Priority" />
                 </RadzenFormField>
-                @if (ProjectContext.SelectedProject?.TaskTypes?.Any() == true)
-                {
-                    <RadzenFormField Text="Task Type">
-                        <RadzenDropDown TValue="string" Data="@ProjectContext.SelectedProject.TaskTypes" @bind-Value="newTask.TaskType" />
-                    </RadzenFormField>
-                }
+                <RadzenFormField Text="Tags (comma-separated)">
+                    <RadzenTextBox @bind-Value="tagsString" Placeholder="e.g. auth, ui" />
+                </RadzenFormField>
                 <RadzenStack Orientation="Orientation.Horizontal" JustifyContent="JustifyContent.End" Gap="1rem">
                     <RadzenButton Text="Cancel" Click="@(() => ds.Close(false))" ButtonStyle="ButtonStyle.Light" />
                     <RadzenButton Text="Create" Click="@(() => { if(!string.IsNullOrWhiteSpace(newTask.TaskHandle)) ds.Close(true); })" ButtonStyle="ButtonStyle.Primary" Disabled="@string.IsNullOrWhiteSpace(newTask.TaskHandle)" />
@@ -278,8 +475,70 @@
         var selectedProject = ProjectContext.SelectedProject;
         if (result == true && selectedProject is not null)
         {
+            if (!string.IsNullOrWhiteSpace(tagsString))
+            {
+                newTask.Tags = tagsString.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToList();
+            }
             await TaskService.CreateTaskAsync(selectedProject!.Id, newTask, currentUserId);
-            await LoadTasks();
+            await LoadAllData();
+        }
+    }
+
+    private async Task OnNewDecision()
+    {
+        var newDecision = new CreateTaskRequest
+        {
+            Title = "New Architectural Decision",
+            TaskType = "Decision",
+            Status = TaskItemStatus.Completed,
+            Priority = TaskPriority.Medium
+        };
+        var tagsString = string.Empty;
+        IEnumerable<string> selectedSupersedes = Enumerable.Empty<string>();
+        var candidateDecisions = allProjectDecisions
+            .Where(d => !string.IsNullOrWhiteSpace(d.TaskHandle))
+            .Select(d => new { Handle = d.TaskHandle!, Display = $"{d.TaskHandle} — {d.Title}" })
+            .ToList();
+
+        var result = await DialogService.OpenAsync("Record New Decision", ds =>
+            @<RadzenStack Gap="1rem">
+                <RadzenFormField Text="Decision Title">
+                    <RadzenTextBox @bind-Value="newDecision.Title" />
+                </RadzenFormField>
+                <RadzenFormField Text="Handle (Required)">
+                    <RadzenTextBox @bind-Value="newDecision.TaskHandle" Placeholder="e.g. adr-sqlite-vectors" />
+                </RadzenFormField>
+                <RadzenFormField Text="Decision Rationale & Context (Markdown)">
+                    <RadzenTextArea @bind-Value="newDecision.Body" Rows="6" Style="width: 100%; font-family: monospace;" Placeholder="Explain why this decision was made, options considered, and trade-offs..." />
+                </RadzenFormField>
+                <RadzenFormField Text="Tags (comma-separated)">
+                    <RadzenTextBox @bind-Value="tagsString" Placeholder="e.g. architecture, sqlite, search" />
+                </RadzenFormField>
+                <RadzenFormField Text="Supersedes Previous Decisions (marks selected as Obsolete)">
+                    <RadzenDropDown TValue="IEnumerable<string>" @bind-Value="selectedSupersedes" Data="@candidateDecisions"
+                                    TextProperty="Display" ValueProperty="Handle" Multiple="true" Chips="true" AllowClear="true"
+                                    Placeholder="Select previous decisions superseded by this one..." />
+                </RadzenFormField>
+                <RadzenStack Orientation="Orientation.Horizontal" JustifyContent="JustifyContent.End" Gap="1rem">
+                    <RadzenButton Text="Cancel" Click="@(() => ds.Close(false))" ButtonStyle="ButtonStyle.Light" />
+                    <RadzenButton Text="Record Decision" Click="@(() => { if(!string.IsNullOrWhiteSpace(newDecision.TaskHandle)) ds.Close(true); })" ButtonStyle="ButtonStyle.Primary" Disabled="@string.IsNullOrWhiteSpace(newDecision.TaskHandle)" />
+                </RadzenStack>
+            </RadzenStack>
+        );
+
+        var selectedProject = ProjectContext.SelectedProject;
+        if (result == true && selectedProject is not null)
+        {
+            if (!string.IsNullOrWhiteSpace(tagsString))
+            {
+                newDecision.Tags = tagsString.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToList();
+            }
+            if (selectedSupersedes != null && selectedSupersedes.Any())
+            {
+                newDecision.SupersedesHandles = selectedSupersedes.ToList();
+            }
+            await TaskService.CreateTaskAsync(selectedProject!.Id, newDecision, currentUserId);
+            await LoadAllData();
         }
     }
 
@@ -296,7 +555,7 @@
         catch (Exception)
         {
             // Revert UI if update fails (though grid reload will fix it eventually)
-            await LoadTasks(); 
+            await LoadAllData(); 
             // Ideally show notification
         }
     }
@@ -308,6 +567,7 @@
         TaskItemStatus.Completed => BadgeStyle.Success,
         TaskItemStatus.Blocked => BadgeStyle.Danger,
         TaskItemStatus.Cancelled => BadgeStyle.Light,
+        TaskItemStatus.Obsolete => BadgeStyle.Secondary,
         _ => BadgeStyle.Secondary
     };
 

@@ -71,20 +71,46 @@ public class ProjectsControllerTests : ControllerTestBase
     public async Task UpdateProject_ShouldAllowRemovingUnusedTaskTypes()
     {
         var user = await CreateUserAndAuthenticateAsync();
-        var project = await CreateProjectAsync(user.Id); // Default: Epic, Task
+        var project = await CreateProjectAsync(user.Id);
 
         var updateRequest = new UpdateProjectRequest
         {
             Name = project.Name,
             Description = project.Description,
-            TaskTypes = new List<string> { "Epic" } // Removed "Task"
+            TaskTypes = new List<string> { "Epic" } // Removed "Bug", while "Task" and "Decision" are always preserved
         };
 
         var response = await _client.PutAsJsonAsync($"api/v1/projects/{project.Id}", updateRequest);
         response.EnsureSuccessStatusCode();
 
         var updatedProject = await response.Content.ReadFromJsonAsync<ProjectDto>();
-        Assert.Single(updatedProject!.TaskTypes);
-        Assert.DoesNotContain("Task", updatedProject.TaskTypes);
+        Assert.NotNull(updatedProject);
+        Assert.Contains("Task", updatedProject.TaskTypes);
+        Assert.Contains("Decision", updatedProject.TaskTypes);
+        Assert.Contains("Epic", updatedProject.TaskTypes);
+        Assert.DoesNotContain("Bug", updatedProject.TaskTypes);
+        Assert.DoesNotContain("Decision", updatedProject.GetTaskSubTypes());
+    }
+
+    [Fact]
+    public async Task CreateProject_WithCustomSubTypes_ShouldAlwaysIncludeTaskAndDecision()
+    {
+        var user = await CreateUserAndAuthenticateAsync();
+
+        var request = new CreateProjectRequest
+        {
+            Name = "Custom SubTypes Project",
+            Description = "Desc",
+            TaskTypes = new List<string> { "Story", "Spike" }
+        };
+        var response = await _client.PostAsJsonAsync("api/v1/projects", request);
+        response.EnsureSuccessStatusCode();
+
+        var project = await response.Content.ReadFromJsonAsync<ProjectDto>();
+        Assert.NotNull(project);
+        Assert.Contains("Task", project.TaskTypes);
+        Assert.Contains("Decision", project.TaskTypes);
+        Assert.Contains("Story", project.TaskTypes);
+        Assert.Contains("Spike", project.TaskTypes);
     }
 }

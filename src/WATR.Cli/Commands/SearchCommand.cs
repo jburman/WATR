@@ -141,6 +141,7 @@ public class SearchCommand : AsyncCommand<SearchCommand.Settings>
         TaskItemStatus.Completed => "[green]Completed[/]",
         TaskItemStatus.Blocked => "[red]Blocked[/]",
         TaskItemStatus.Cancelled => "[grey]Cancelled[/]",
+        TaskItemStatus.Obsolete => "[grey]Obsolete[/]",
         _ => status.ToString()
     };
 

@@ -14,19 +14,47 @@
     else
     {
         <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" JustifyContent="JustifyContent.SpaceBetween">
-            <RadzenTextBox @bind-Value="task.Title" Style="width: 70%; font-size: 1.5rem;" />
-            <RadzenStack Orientation="Orientation.Horizontal" Gap="0.5rem">
-                @if (assigneeOptions != null)
+            <RadzenTextBox @bind-Value="task.Title" Style="width: 60%; font-size: 1.5rem;" />
+            <RadzenStack Orientation="Orientation.Horizontal" Gap="0.5rem" AlignItems="AlignItems.Center" Wrap="FlexWrap.Wrap">
+                @if (IsDecision)
                 {
-                    <RadzenAutoComplete Data="@assigneeOptions" @bind-Value="assigneeName" Placeholder="Assigned To" Style="width: 200px;" FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive" />
+                    <RadzenBadge BadgeStyle="BadgeStyle.Secondary" Text="Decision" />
+                    @if (task.Status != TaskItemStatus.Obsolete)
+                    {
+                        <RadzenButton Text="Mark Obsolete" Icon="history" Size="ButtonSize.Small" ButtonStyle="ButtonStyle.Warning" Click="@MarkObsolete" />
+                    }
                 }
-                @if (ProjectContext.SelectedProject?.TaskTypes?.Any() == true)
+                else
                 {
-                    <RadzenDropDown TValue="string" Data="@ProjectContext.SelectedProject.TaskTypes" @bind-Value="task.TaskType" Placeholder="Type" Style="width: 120px;" />
+                    @if (assigneeOptions != null)
+                    {
+                        <RadzenAutoComplete Data="@assigneeOptions" @bind-Value="assigneeName" Placeholder="Assigned To" Style="width: 180px;" FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive" />
+                    }
+                    @if (ProjectContext.SelectedProject != null)
+                    {
+                        <RadzenDropDown TValue="string" Data="@(ProjectContext.SelectedProject.GetTaskSubTypes())" @bind-Value="task.TaskType" Placeholder="Sub-Type" Style="width: 130px;" />
+                    }
+                    <RadzenDropDown TValue="TaskPriority" Data="@(Enum.GetValues<TaskPriority>())" @bind-Value="task.Priority" Style="width: 120px;" />
                 }
                 <RadzenDropDown TValue="TaskItemStatus" Data="@(Enum.GetValues<TaskItemStatus>())" @bind-Value="task.Status" Style="width: 150px;" />
-                <RadzenDropDown TValue="TaskPriority" Data="@(Enum.GetValues<TaskPriority>())" @bind-Value="task.Priority" Style="width: 120px;" />
             </RadzenStack>
+        </RadzenStack>
+
+        <RadzenStack Orientation="Orientation.Horizontal" Gap="1rem" AlignItems="AlignItems.Center" Wrap="FlexWrap.Wrap">
+            <RadzenFormField Text="Tags (comma-separated)" Style="flex: 1; min-width: 220px;">
+                <RadzenTextBox @bind-Value="tagsInput" Placeholder="e.g. auth, sqlite" />
+            </RadzenFormField>
+            @if (IsDecision)
+            {
+                <RadzenFormField Text="Supersedes (Previous Decisions)" Style="flex: 1; min-width: 260px;">
+                    <RadzenDropDown TValue="IEnumerable<string>" @bind-Value="selectedSupersedesHandles" Data="@otherProjectDecisions"
+                                    TextProperty="TaskHandle" ValueProperty="TaskHandle" Multiple="true" Chips="true" AllowClear="true"
+                                    Placeholder="Select decisions superseded by this one..." />
+                </RadzenFormField>
+                <RadzenFormField Text="Superseded By Handle" Style="width: 220px;">
+                    <RadzenTextBox @bind-Value="task.SupersededByHandle" Placeholder="e.g. 45-new-adr" />
+                </RadzenFormField>
+            }
         </RadzenStack>
 
         <RadzenTabs>
@@ -94,9 +122,14 @@
     private TaskItemDto? task;
     private List<ProjectMemberDto>? members;
     private List<string>? assigneeOptions;
+    private List<TaskItemSummaryDto> otherProjectDecisions = new();
+    private IEnumerable<string> selectedSupersedesHandles = Enumerable.Empty<string>();
     private string newNoteContent = "";
     private string? assigneeName = "";
+    private string tagsInput = "";
     private Guid currentUserId;
+
+    private bool IsDecision => string.Equals(task?.TaskType, "Decision", StringComparison.OrdinalIgnoreCase);
 
     protected override async Task OnInitializedAsync()
     {
@@ -107,21 +140,33 @@
         if (task != null)
         {
             assigneeName = task.AssignedToDisplayName ?? task.AssignedToName;
+            tagsInput = task.Tags != null ? string.Join(", ", task.Tags) : "";
+            selectedSupersedesHandles = task.SupersedesHandles?.ToList() ?? new List<string>();
             try
             {
                 var membersTask = ProjectService.GetProjectMembersAsync(task.ProjectId, currentUserId);
                 var assigneesTask = ProjectService.GetProjectAssigneesAsync(task.ProjectId, currentUserId);
+                var decisionsTask = TaskService.GetTasksAsync(task.ProjectId, null, null, null, currentUserId, 1, 200, "Decision");
                 
-                await Task.WhenAll(membersTask, assigneesTask);
+                await Task.WhenAll(membersTask, assigneesTask, decisionsTask);
                 
                 members = membersTask.Result;
                 assigneeOptions = assigneesTask.Result;
+                otherProjectDecisions = decisionsTask.Result.Items
+                    .Where(d => d.Id != task.Id && !string.IsNullOrWhiteSpace(d.TaskHandle))
+                    .ToList();
             }
             catch (Exception ex)
             {
                 NotificationService.Notify(NotificationSeverity.Error, "Error", $"Failed to load assignment data: {ex.Message}");
             }
         }
+    }
+
+    void MarkObsolete()
+    {
+        if (task == null) return;
+        task.Status = TaskItemStatus.Obsolete;
     }
 
     async Task SaveTask()
@@ -138,19 +183,32 @@
             }
         }
 
+        var parsedTags = string.IsNullOrWhiteSpace(tagsInput)
+            ? new List<string>()
+            : tagsInput.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToList();
+
+        if (IsDecision && !string.IsNullOrWhiteSpace(task.SupersededByHandle) && task.Status == TaskItemStatus.Completed)
+        {
+            task.Status = TaskItemStatus.Obsolete;
+        }
+
         try
         {
             await TaskService.UpdateTaskAsync(task.Id, new UpdateTaskRequest
             {
                 Title = task.Title,
                 Body = task.Body,
+                TaskHandle = task.TaskHandle,
                 Status = task.Status,
                 Priority = task.Priority,
                 TaskType = task.TaskType,
                 AssignedToUserId = userId,
-                AssignedToName = assigneeName
+                AssignedToName = assigneeName,
+                Tags = parsedTags,
+                SupersededByHandle = string.IsNullOrWhiteSpace(task.SupersededByHandle) ? null : task.SupersededByHandle.Trim(),
+                SupersedesHandles = selectedSupersedesHandles?.ToList() ?? new List<string>()
             }, currentUserId);
-            NotificationService.Notify(NotificationSeverity.Success, "Success", "Task updated");
+            NotificationService.Notify(NotificationSeverity.Success, "Success", "Item updated");
             DialogService.Close(true);
         }
         catch (Exception ex)

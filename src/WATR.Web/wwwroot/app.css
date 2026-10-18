@@ -58,3 +58,216 @@ h1:focus {
 .form-floating > .form-control-plaintext:focus::placeholder, .form-floating > .form-control:focus::placeholder {
     text-align: start;
 }
+
+/* ==========================================================================
+   WATR Cyberpunk Dark Theme - Reconnect Modal
+   ========================================================================== */
+
+#components-reconnect-modal {
+    background: #14171f !important;
+    background: linear-gradient(160deg, #1a1e29 0%, #10131a 100%) !important;
+    color: #e5e7eb !important;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
+    width: 22rem !important;
+    max-width: 90vw !important;
+    margin: 20vh auto !important;
+    padding: 2rem 1.75rem !important;
+    border: 1px solid rgba(0, 255, 255, 0.4) !important;
+    border-radius: 12px !important;
+    box-shadow: 0 0 25px rgba(0, 255, 255, 0.25), 0 20px 50px rgba(0, 0, 0, 0.8), inset 0 0 15px rgba(0, 255, 255, 0.05) !important;
+    opacity: 0;
+    transition: opacity 0.3s ease, transform 0.3s ease !important;
+}
+
+#components-reconnect-modal[open] {
+    opacity: 1 !important;
+}
+
+#components-reconnect-modal::backdrop {
+    background: rgba(5, 8, 15, 0.85) !important;
+    backdrop-filter: blur(8px) !important;
+}
+
+.components-reconnect-container {
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    text-align: center !important;
+    gap: 1.25rem !important;
+}
+
+.components-reconnect-badge {
+    display: inline-flex !important;
+    align-items: center !important;
+    gap: 8px !important;
+    padding: 4px 12px !important;
+    background: rgba(0, 255, 255, 0.05) !important;
+    border: 1px solid rgba(0, 255, 255, 0.3) !important;
+    border-radius: 20px !important;
+    box-shadow: 0 0 10px rgba(0, 255, 255, 0.15) !important;
+}
+
+.components-reconnect-logo {
+    width: 24px !important;
+    height: 24px !important;
+    object-fit: contain !important;
+}
+
+.components-reconnect-brand {
+    font-family: 'Courier New', Courier, monospace !important;
+    font-weight: 900 !important;
+    font-size: 0.85rem !important;
+    letter-spacing: 2px !important;
+    color: #00ffff !important;
+    text-shadow: 0 0 5px rgba(0, 255, 255, 0.6) !important;
+}
+
+/* Glowing Neon Dual-Ring Spinner */
+.components-rejoining-animation {
+    position: relative !important;
+    width: 60px !important;
+    height: 60px !important;
+    margin: 0.5rem 0 !important;
+}
+
+.spinner-ring {
+    position: absolute !important;
+    border-radius: 50% !important;
+    inset: 0 !important;
+    border: 2px solid transparent !important;
+}
+
+.outer-ring {
+    border-top-color: #00ffff !important;
+    border-right-color: #00ffff !important;
+    filter: drop-shadow(0 0 6px #00ffff) !important;
+    animation: reconnect-spin 1.2s cubic-bezier(0.5, 0, 0.5, 1) infinite !important;
+}
+
+.inner-ring {
+    inset: 8px !important;
+    border-bottom-color: #a855f7 !important;
+    border-left-color: #a855f7 !important;
+    filter: drop-shadow(0 0 6px #a855f7) !important;
+    animation: reconnect-spin-reverse 1.6s cubic-bezier(0.5, 0, 0.5, 1) infinite !important;
+}
+
+@keyframes reconnect-spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+@keyframes reconnect-spin-reverse {
+    0% { transform: rotate(360deg); }
+    100% { transform: rotate(0deg); }
+}
+
+.components-reconnect-content p {
+    margin: 0 !important;
+    font-size: 0.95rem !important;
+    line-height: 1.4 !important;
+    color: #e5e7eb !important;
+}
+
+.components-reconnect-subtext {
+    font-size: 0.8rem !important;
+    color: #9ca3af !important;
+    display: block !important;
+    margin-top: 0.25rem !important;
+}
+
+#components-seconds-to-next-attempt {
+    color: #00ffff !important;
+    font-weight: bold !important;
+    font-family: monospace !important;
+}
+
+/* Buttons */
+.components-reconnect-actions {
+    display: flex !important;
+    gap: 0.75rem !important;
+    margin-top: 0.5rem !important;
+    justify-content: center !important;
+    width: 100% !important;
+}
+
+.btn-reconnect {
+    background: linear-gradient(135deg, #0284c7, #00ffff) !important;
+    color: #0b0f19 !important;
+    font-weight: 700 !important;
+    font-size: 0.85rem !important;
+    padding: 8px 18px !important;
+    border: none !important;
+    border-radius: 6px !important;
+    cursor: pointer !important;
+    box-shadow: 0 0 12px rgba(0, 255, 255, 0.4) !important;
+    transition: all 0.2s ease !important;
+}
+
+.btn-reconnect:hover {
+    transform: translateY(-1px) !important;
+    box-shadow: 0 0 20px rgba(0, 255, 255, 0.8) !important;
+    background: linear-gradient(135deg, #38bdf8, #a5f3fc) !important;
+}
+
+.btn-reload {
+    background: rgba(255, 255, 255, 0.08) !important;
+    color: #9ca3af !important;
+    font-weight: 600 !important;
+    font-size: 0.85rem !important;
+    padding: 8px 16px !important;
+    border: 1px solid rgba(255, 255, 255, 0.15) !important;
+    border-radius: 6px !important;
+    cursor: pointer !important;
+    transition: all 0.2s ease !important;
+}
+
+.btn-reload:hover {
+    background: rgba(255, 255, 255, 0.15) !important;
+    color: #f3f4f6 !important;
+    border-color: rgba(255, 255, 255, 0.3) !important;
+}
+
+/* Visibility State Rules */
+.components-reconnect-first-attempt-visible,
+.components-reconnect-repeated-attempt-visible,
+.components-reconnect-failed-visible,
+.components-pause-visible,
+.components-resume-failed-visible,
+.components-rejoining-animation {
+    display: none !important;
+}
+
+#components-reconnect-modal.components-reconnect-show .components-reconnect-first-attempt-visible,
+#components-reconnect-modal.components-reconnect-show .components-rejoining-animation {
+    display: block !important;
+}
+
+#components-reconnect-modal.components-reconnect-retrying .components-reconnect-repeated-attempt-visible,
+#components-reconnect-modal.components-reconnect-retrying .components-rejoining-animation {
+    display: block !important;
+}
+
+#components-reconnect-modal.components-reconnect-failed p.components-reconnect-failed-visible {
+    display: block !important;
+}
+
+#components-reconnect-modal.components-reconnect-failed button.components-reconnect-failed-visible {
+    display: inline-flex !important;
+}
+
+#components-reconnect-modal.components-reconnect-paused p.components-pause-visible {
+    display: block !important;
+}
+
+#components-reconnect-modal.components-reconnect-paused button.components-pause-visible {
+    display: inline-flex !important;
+}
+
+#components-reconnect-modal.components-reconnect-resume-failed p.components-resume-failed-visible {
+    display: block !important;
+}
+
+#components-reconnect-modal.components-reconnect-resume-failed button.components-resume-failed-visible {
+    display: inline-flex !important;
+}
