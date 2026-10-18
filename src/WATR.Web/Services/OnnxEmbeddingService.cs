@@ -22,6 +22,8 @@ public class OnnxEmbeddingService : IOnnxEmbeddingService
     private const string ModelUrl = "https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2/resolve/main/onnx/model.onnx";
     private const string VocabUrl = "https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2/resolve/main/vocab.txt";
     private const int MaxSequenceLength = 256;
+    private const int ChunkOverlapTokens = 32;
+    private const int MaxChunks = 16;
     private const int EmbeddingDimension = 384;
 
     private readonly IHostEnvironment _env;
@@ -117,29 +119,65 @@ public class OnnxEmbeddingService : IOnnxEmbeddingService
 
         await EnsureInitializedAsync(cancellationToken);
 
-        var tokenIds = _tokenizer!.EncodeToIds(text, addSpecialTokens: true, considerPreTokenization: true, considerNormalization: true);
-        var count = Math.Min(tokenIds.Count, MaxSequenceLength);
-        if (count == 0)
+        var contentTokenIds = _tokenizer!.EncodeToIds(text, addSpecialTokens: false, considerPreTokenization: true, considerNormalization: true);
+        if (contentTokenIds.Count == 0)
         {
             return new float[EmbeddingDimension];
         }
 
+        int maxPayloadTokens = MaxSequenceLength - 2; // Reserve [CLS] (101) and [SEP] (102)
+        if (contentTokenIds.Count <= maxPayloadTokens)
+        {
+            return ComputeSingleChunkEmbedding(contentTokenIds, 0, contentTokenIds.Count);
+        }
+
+        // Multi-chunk sliding window mean pooling for long task bodies and decision notes
+        var combinedEmbedding = new float[EmbeddingDimension];
+        int stride = Math.Max(1, maxPayloadTokens - ChunkOverlapTokens);
+        int chunkCount = 0;
+
+        for (int start = 0; start < contentTokenIds.Count && chunkCount < MaxChunks; start += stride)
+        {
+            int length = Math.Min(maxPayloadTokens, contentTokenIds.Count - start);
+            var chunkVector = ComputeSingleChunkEmbedding(contentTokenIds, start, length);
+            for (int d = 0; d < EmbeddingDimension; d++)
+            {
+                combinedEmbedding[d] += chunkVector[d];
+            }
+            chunkCount++;
+
+            if (start + length >= contentTokenIds.Count)
+            {
+                break;
+            }
+        }
+
+        var combinedSpan = combinedEmbedding.AsSpan();
+        var combinedNorm = TensorPrimitives.Norm(combinedSpan);
+        if (combinedNorm > 0)
+        {
+            TensorPrimitives.Divide(combinedSpan, combinedNorm, combinedSpan);
+        }
+
+        return combinedEmbedding;
+    }
+
+    private float[] ComputeSingleChunkEmbedding(IReadOnlyList<int> contentTokenIds, int start, int length)
+    {
+        int count = length + 2;
         var inputIds = new long[count];
         var attentionMask = new long[count];
         var tokenTypeIds = new long[count];
 
-        for (int i = 0; i < count; i++)
+        inputIds[0] = 101; // [CLS]
+        attentionMask[0] = 1;
+        for (int i = 0; i < length; i++)
         {
-            inputIds[i] = tokenIds[i];
-            attentionMask[i] = 1;
-            tokenTypeIds[i] = 0;
+            inputIds[i + 1] = contentTokenIds[start + i];
+            attentionMask[i + 1] = 1;
         }
-
-        // If truncated, ensure last token is [SEP] (id 102)
-        if (tokenIds.Count > MaxSequenceLength)
-        {
-            inputIds[count - 1] = 102;
-        }
+        inputIds[count - 1] = 102; // [SEP]
+        attentionMask[count - 1] = 1;
 
         var inputIdsTensor = new DenseTensor<long>(inputIds.AsMemory(), new[] { 1, count });
         var attentionMaskTensor = new DenseTensor<long>(attentionMask.AsMemory(), new[] { 1, count });
@@ -214,6 +252,14 @@ public class OnnxEmbeddingService : IOnnxEmbeddingService
     {
         var sb = new StringBuilder();
         sb.AppendLine($"[{task.TaskType ?? "Task"}] {task.TaskHandle}: {task.Title}");
+        if (task.Tags != null && task.Tags.Count > 0)
+        {
+            sb.AppendLine($"Tags: {string.Join(", ", task.Tags)}");
+        }
+        if (!string.IsNullOrWhiteSpace(task.SupersededByHandle))
+        {
+            sb.AppendLine($"Superseded by: {task.SupersededByHandle}");
+        }
         if (!string.IsNullOrWhiteSpace(task.Body))
         {
             sb.AppendLine();

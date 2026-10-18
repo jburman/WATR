@@ -43,6 +43,8 @@ public class ProjectsControllerTests : ControllerTestBase
         Assert.NotNull(project);
         Assert.Contains("Epic", project.TaskTypes);
         Assert.Contains("Task", project.TaskTypes);
+        Assert.Contains("Bug", project.TaskTypes);
+        Assert.Contains("Decision", project.TaskTypes);
     }
 
     [Fact]

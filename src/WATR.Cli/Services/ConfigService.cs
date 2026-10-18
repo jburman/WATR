@@ -7,12 +7,14 @@ public class ConfigService
 {
     private const string ConfigFileName = "config.json";
     private readonly string _configPath;
+    private readonly string? _customWorkingDirectory;
 
-    public ConfigService(string? customConfigPath = null)
+    public ConfigService(string? customConfigPath = null, string? customWorkingDirectory = null)
     {
         if (!string.IsNullOrWhiteSpace(customConfigPath))
         {
             _configPath = customConfigPath;
+            _customWorkingDirectory = customWorkingDirectory ?? Path.GetDirectoryName(customConfigPath);
         }
         else
         {
@@ -43,6 +45,24 @@ public class ConfigService
 
     public LocalProjectSettings? GetLocalSettings()
     {
+        if (!string.IsNullOrWhiteSpace(_customWorkingDirectory))
+        {
+            var customSettingsPath = Path.Combine(_customWorkingDirectory, ".watr", "settings.json");
+            if (File.Exists(customSettingsPath))
+            {
+                try
+                {
+                    var json = File.ReadAllText(customSettingsPath);
+                    return JsonSerializer.Deserialize(json, CliJsonContext.Default.LocalProjectSettings);
+                }
+                catch
+                {
+                    // Ignore errors reading local settings
+                }
+            }
+            return null;
+        }
+
         var dir = new DirectoryInfo(Directory.GetCurrentDirectory());
         while (dir != null)
         {
@@ -66,7 +86,8 @@ public class ConfigService
 
     public void SaveLocalSettings(LocalProjectSettings settings)
     {
-        var dir = Path.Combine(Directory.GetCurrentDirectory(), ".watr");
+        var baseDir = !string.IsNullOrWhiteSpace(_customWorkingDirectory) ? _customWorkingDirectory : Directory.GetCurrentDirectory();
+        var dir = Path.Combine(baseDir, ".watr");
         if (!Directory.Exists(dir)) Directory.CreateDirectory(dir);
 
         var json = JsonSerializer.Serialize(settings, CliJsonContext.Default.LocalProjectSettings);

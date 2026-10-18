@@ -113,6 +113,14 @@ namespace WATR.Web.Migrations
                     b.Property<int>("Status")
                         .HasColumnType("INTEGER");
 
+                    b.Property<string>("SupersededByHandle")
+                        .HasMaxLength(50)
+                        .HasColumnType("TEXT");
+
+                    b.PrimitiveCollection<string>("Tags")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("TaskHandle")
                         .HasMaxLength(50)
                         .HasColumnType("TEXT");

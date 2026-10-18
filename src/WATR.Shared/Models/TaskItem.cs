@@ -37,6 +37,11 @@ public class TaskItem
     
     public DateTime? ClosedAt { get; set; }
     
+    public List<string> Tags { get; set; } = new();
+
+    [MaxLength(50)]
+    public string? SupersededByHandle { get; set; }
+
     public byte[]? Embedding { get; set; }
     public DateTime? EmbeddingUpdatedAt { get; set; }
     

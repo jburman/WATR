@@ -29,6 +29,12 @@ public class ListCommand : AsyncCommand<ListCommand.Settings>
         [CommandOption("-s|--status <STATUS>")]
         public TaskItemStatus? Status { get; set; }
 
+        [CommandOption("-t|--type <TYPE>")]
+        public string? TaskType { get; set; }
+
+        [CommandOption("--tag <TAG>")]
+        public string? Tag { get; set; }
+
         [CommandOption("--json")]
         public bool Json { get; set; }
     }
@@ -52,8 +58,12 @@ public class ListCommand : AsyncCommand<ListCommand.Settings>
             return 3;
         }
 
-        var path = $"api/v1/projects/{project.Id}/tasks";
-        if (settings.Status.HasValue) path += $"?status={settings.Status.Value}";
+        var queryParams = new List<string>();
+        if (settings.Status.HasValue) queryParams.Add($"status={settings.Status.Value}");
+        if (!string.IsNullOrWhiteSpace(settings.TaskType)) queryParams.Add($"taskType={Uri.EscapeDataString(settings.TaskType)}");
+        if (!string.IsNullOrWhiteSpace(settings.Tag)) queryParams.Add($"tag={Uri.EscapeDataString(settings.Tag)}");
+
+        var path = $"api/v1/projects/{project.Id}/tasks" + (queryParams.Count > 0 ? "?" + string.Join("&", queryParams) : "");
 
         var response = await _api.GetAsync<PaginatedResponse<TaskItemSummaryDto>>(path);
 

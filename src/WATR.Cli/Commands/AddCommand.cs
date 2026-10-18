@@ -38,6 +38,15 @@ public class AddCommand : AsyncCommand<AddCommand.Settings>
 
         [CommandOption("-t|--type <TYPE>")]
         public string? TaskType { get; set; }
+
+        [CommandOption("-s|--status <STATUS>")]
+        public TaskItemStatus? Status { get; set; }
+
+        [CommandOption("--tags <TAGS>")]
+        public string? Tags { get; set; }
+
+        [CommandOption("--superseded-by <HANDLE>")]
+        public string? SupersededByHandle { get; set; }
     }
 
     public override async Task<int> ExecuteAsync(CommandContext context, Settings settings, CancellationToken cancellationToken)
@@ -71,13 +80,20 @@ public class AddCommand : AsyncCommand<AddCommand.Settings>
             if (File.Exists(path)) body = File.ReadAllText(path);
         }
 
+        var tags = string.IsNullOrWhiteSpace(settings.Tags)
+            ? null
+            : settings.Tags.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToList();
+
         var request = new CreateTaskRequest
         {
             Title = settings.Title,
             TaskHandle = settings.Handle,
             Body = body,
             Priority = settings.Priority,
-            TaskType = settings.TaskType
+            TaskType = settings.TaskType,
+            Status = settings.Status,
+            Tags = tags,
+            SupersededByHandle = settings.SupersededByHandle
         };
 
         var task = await _api.PostAsync<TaskItemDto>($"api/v1/projects/{project.Id}/tasks", request);

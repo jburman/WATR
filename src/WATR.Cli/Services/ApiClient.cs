@@ -61,20 +61,26 @@ public class ApiClient
         return (await response.Content.ReadFromJsonAsync(typeInfo))!;
     }
 
-    public async Task<T> PostAsync<T>(string path, object body)
+    public async Task<T> PostAsync<T>(string path, object? body = null)
     {
-        var bodyTypeInfo = AppJsonContext.Default.GetTypeInfo(body.GetType());
-        if (bodyTypeInfo == null)
+        HttpContent? jsonContent = null;
+        if (body != null)
         {
-             throw new InvalidOperationException($"Type {body.GetType()} is not registered in AppJsonContext.");
+            var bodyTypeInfo = AppJsonContext.Default.GetTypeInfo(body.GetType());
+            if (bodyTypeInfo == null)
+            {
+                throw new InvalidOperationException($"Type {body.GetType()} is not registered in AppJsonContext.");
+            }
+            jsonContent = JsonContent.Create(body, bodyTypeInfo);
         }
 
-        using var jsonContent = JsonContent.Create(body, bodyTypeInfo);
-        var response = await _http.PostAsync(path.TrimStart('/'), jsonContent);
-        
-        await EnsureSuccess(response);
-        var typeInfo = (JsonTypeInfo<T>)AppJsonContext.Default.GetTypeInfo(typeof(T))!;
-        return (await response.Content.ReadFromJsonAsync(typeInfo))!;
+        using (jsonContent)
+        {
+            var response = await _http.PostAsync(path.TrimStart('/'), jsonContent);
+            await EnsureSuccess(response);
+            var typeInfo = (JsonTypeInfo<T>)AppJsonContext.Default.GetTypeInfo(typeof(T))!;
+            return (await response.Content.ReadFromJsonAsync(typeInfo))!;
+        }
     }
 
     public async Task PostAsync(string path, object? body = null)
@@ -93,6 +99,22 @@ public class ApiClient
         var response = await _http.PostAsync(path.TrimStart('/'), content);
         content?.Dispose();
         await EnsureSuccess(response);
+    }
+
+    public async Task<T> PatchAsync<T>(string path, object body)
+    {
+        var bodyTypeInfo = AppJsonContext.Default.GetTypeInfo(body.GetType());
+        if (bodyTypeInfo == null)
+        {
+            throw new InvalidOperationException($"Type {body.GetType()} is not registered in AppJsonContext.");
+        }
+
+        using var request = new HttpRequestMessage(HttpMethod.Patch, path.TrimStart('/'));
+        request.Content = JsonContent.Create(body, bodyTypeInfo);
+        var response = await _http.SendAsync(request);
+        await EnsureSuccess(response);
+        var typeInfo = (JsonTypeInfo<T>)AppJsonContext.Default.GetTypeInfo(typeof(T))!;
+        return (await response.Content.ReadFromJsonAsync(typeInfo))!;
     }
 
     public async Task PatchAsync(string path, object body)

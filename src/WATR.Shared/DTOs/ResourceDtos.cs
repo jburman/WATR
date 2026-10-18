@@ -46,6 +46,8 @@ public class TaskItemDto
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }
     public DateTime? ClosedAt { get; set; }
+    public List<string> Tags { get; set; } = new();
+    public string? SupersededByHandle { get; set; }
     public List<TaskNoteDto> Notes { get; set; } = new();
 }
 
@@ -60,6 +62,8 @@ public class TaskItemSummaryDto
     public TaskPriority Priority { get; set; }
     public string? AssignedToDisplayName { get; set; }
     public DateTime UpdatedAt { get; set; }
+    public List<string> Tags { get; set; } = new();
+    public string? SupersededByHandle { get; set; }
 }
 
 public class CreateTaskRequest
@@ -69,6 +73,9 @@ public class CreateTaskRequest
     public string Body { get; set; } = string.Empty;
     public string? TaskType { get; set; }
     public TaskPriority Priority { get; set; } = TaskPriority.None;
+    public TaskItemStatus? Status { get; set; }
+    public List<string>? Tags { get; set; }
+    public string? SupersededByHandle { get; set; }
 }
 
 public class UpdateTaskRequest
@@ -81,6 +88,8 @@ public class UpdateTaskRequest
     public TaskPriority Priority { get; set; }
     public Guid? AssignedToUserId { get; set; }
     public string? AssignedToName { get; set; }
+    public List<string>? Tags { get; set; }
+    public string? SupersededByHandle { get; set; }
 }
 
 public class ProjectMemberDto
@@ -99,6 +108,10 @@ public class PatchTaskRequest
     public string? TaskType { get; set; }
     public TaskItemStatus? Status { get; set; }
     public TaskPriority? Priority { get; set; }
+    public Guid? AssignedToUserId { get; set; }
+    public string? AssignedToName { get; set; }
+    public List<string>? Tags { get; set; }
+    public string? SupersededByHandle { get; set; }
 }
 
 public class TaskNoteDto

@@ -93,6 +93,8 @@ public class WatrDbContext : DbContext
             entity.Property(e => e.Priority)
                 .HasConversion<int>();
 
+            entity.PrimitiveCollection(e => e.Tags);
+
             // Unique TaskNumber per Project
             entity.HasIndex(e => new { e.ProjectId, e.TaskNumber }).IsUnique();
             

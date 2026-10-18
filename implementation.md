@@ -1049,7 +1049,7 @@ This phase adds local, CPU-based vector embedding generation (`all-MiniLM-L6-v2`
   - Store/cache the `all-MiniLM-L6-v2` ONNX model (`model.onnx`) and vocabulary (`vocab.txt`) in `App_Data/models/all-MiniLM-L6-v2/`.
   - Use an async lazy pattern (`SemaphoreSlim` + lazy initialization) so the ONNX `InferenceSession` and `BertTokenizer` are **not** loaded during web app startup, but only when the first background embedding job or search query runs.
   - If `model.onnx` or `vocab.txt` is missing on disk, download them automatically from HuggingFace (`https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2/resolve/main/onnx/model.onnx` and `vocab.txt`) into `App_Data/models/all-MiniLM-L6-v2/`.
-  - Tokenize input text (max 256/512 tokens), run `InferenceSession.Run` on the CPU, perform attention-masked **mean pooling** across token embeddings, and L2-normalize the resulting 384-element `float[]` vector using `TensorPrimitives.Norm`:
+  - Implement **multi-chunk sliding-window mean pooling** (`MaxSequenceLength = 256`, `ChunkOverlapTokens = 32`, `MaxChunks = 16`): split long documents (>254 content tokens) into overlapping windows, run `InferenceSession.Run` on the CPU with attention-masked mean pooling per chunk, average the normalized chunk vectors, and L2-normalize the resulting 384-element `float[]` vector using `TensorPrimitives.Norm`:
     ```csharp
     var norm = TensorPrimitives.Norm(vectorSpan);
     if (norm > 0)
@@ -1065,12 +1065,20 @@ This phase adds local, CPU-based vector embedding generation (`all-MiniLM-L6-v2`
   public static ReadOnlySpan<float> DeserializeVector(byte[] blob) =>
       MemoryMarshal.Cast<byte, float>(blob.AsSpan());
   ```
-- [x] Build the composite document formatter for a `TaskItem` (including its `Notes`):
+- [x] Build the composite document formatter for a `TaskItem` (including `Tags`, `SupersededByHandle`, and `Notes`):
   ```csharp
   public static string BuildCompositeTaskText(TaskItem task)
   {
       var sb = new StringBuilder();
       sb.AppendLine($"[{task.TaskType ?? "Task"}] {task.TaskHandle}: {task.Title}");
+      if (task.Tags is { Count: > 0 })
+      {
+          sb.AppendLine($"Tags: {string.Join(", ", task.Tags)}");
+      }
+      if (!string.IsNullOrWhiteSpace(task.SupersededByHandle))
+      {
+          sb.AppendLine($"Superseded by: {task.SupersededByHandle}");
+      }
       if (!string.IsNullOrWhiteSpace(task.Body))
       {
           sb.AppendLine();
@@ -1125,9 +1133,10 @@ This phase adds local, CPU-based vector embedding generation (`all-MiniLM-L6-v2`
 - [x] Add `SearchTasksAsync` to `WATR.Web/Services/TaskService.cs`:
   - Verify project membership (`VerifyMembershipAsync`).
   - Generate the 384-float query embedding for `query` using `OnnxEmbeddingService`.
-  - Query candidate tasks for `projectId` (applying optional `status` filter).
+  - Query candidate tasks for `projectId` (applying optional `status`, `taskType`, and `tag` filters and `.Include(t => t.Notes)`).
   - For tasks with a non-null `Embedding` (`Length == 384 * sizeof(float)`), compute cosine similarity via `TensorPrimitives.CosineSimilarity(queryVector, DeserializeVector(task.Embedding))`.
-  - For tasks whose `Embedding` is still `null` (newly created and awaiting background processing), perform a case-insensitive substring check on `Title` and `Body` and assign a fallback score (e.g., `0.5f`) if matched.
+  - For tasks whose `Embedding` is still `null` (newly created and awaiting background processing), perform a case-insensitive substring check across `Title`, `Body`, `Tags`, and `Notes` and assign a fallback score (`0.5f`) if matched.
+  - Build a context-aware `MatchedPreview` that prefixes `[Superseded by {handle}] ` when superseded and surfaces `[Note] {snippet}` when a note has the strongest match for the query terms.
   - Filter by `minScore` (default `0.25f`), order descending by `SimilarityScore`, take `top` (default `10`), and return `List<TaskSearchResultDto>`.
 - [x] Add the REST API endpoint in `WATR.Web/Controllers/TasksController.cs`:
   ```csharp
@@ -1136,6 +1145,8 @@ This phase adds local, CPU-based vector embedding generation (`all-MiniLM-L6-v2`
       Guid projectId,
       [FromQuery] string q,
       [FromQuery] TaskItemStatus? status = null,
+      [FromQuery] string? taskType = null,
+      [FromQuery] string? tag = null,
       [FromQuery] int top = 10,
       [FromQuery] float minScore = 0.25f)
   ```
@@ -1144,7 +1155,7 @@ This phase adds local, CPU-based vector embedding generation (`all-MiniLM-L6-v2`
 
 - [x] Create `Commands/SearchCommand.cs` in `WATR.Cli`:
   - Arguments: `<QUERY>` (string).
-  - Options: `--project <name>`, `--status <status>`, `--top <n>`, `--json`.
+  - Options: `--project <name>`, `--status <status>`, `--type <type>`, `--tag <tag>`, `--top <n>`, `--json`.
   - Calls `GET /api/v1/projects/{projectId}/tasks/search?q=...&top=...`.
   - Displays a Spectre.Console table with columns: `Score` (formatted as percentage/decimal), `Handle`, `Title`, `Status`, `Priority`, `Assigned To` (or raw JSON when `--json` is passed).
 - [x] Register `config.AddCommand<SearchCommand>("search");` in `WATR.Cli/Program.cs`.
@@ -1155,7 +1166,7 @@ This phase adds local, CPU-based vector embedding generation (`all-MiniLM-L6-v2`
 - [x] Create tasks with distinct topics and notes (e.g., a task about "JWT refresh token expiration bug" and another about "Dark mode CSS contrast on dashboard").
 - [x] Verify `TaskEmbeddingWorker` logs background embedding completion and populates `Embedding` (1,536 bytes) and `EmbeddingUpdatedAt` in SQLite.
 - [x] Run `watr search "authentication token timeout"` and verify the JWT task ranks first with a high similarity score even though the exact words "authentication" and "timeout" were not in the title.
-- [x] Add a unit/integration test in `WATR.Tests` verifying `SearchProjectTasks` returns expected ranked results.
+- [x] Add unit/integration tests in `WATR.Tests` verifying `SearchProjectTasks` and multi-chunk sliding-window ONNX embeddings.
 
 ---
 
@@ -1189,13 +1200,14 @@ This phase adds a built-in Model Context Protocol (`stdio`) server to `watr` so 
   - **`watr_list_projects`** (`page?`, `pageSize?`) — calls `GET /api/v1/projects`.
   - **`watr_create_project`** (`name`, `description?`, `taskTypes?`) — calls `POST /api/v1/projects` and links `.watr/settings.json`.
   - **`watr_set_project`** (`projectName`) — validates the project exists and writes `.watr/settings.json` in the current workspace.
-  - **`watr_list_tasks`** (`projectName?`, `status?`, `priority?`, `assignedToMe?`, `page?`, `pageSize?`) — calls `GET /api/v1/projects/{projectId}/tasks`.
-  - **`watr_search_tasks`** (`query`, `projectName?`, `status?`, `top?`) — calls `GET /api/v1/projects/{projectId}/tasks/search` for semantic vector search.
+  - **`watr_list_tasks`** (`projectName?`, `status?`, `priority?`, `taskType?`, `tag?`, `assignedToMe?`, `page?`, `pageSize?`) — calls `GET /api/v1/projects/{projectId}/tasks`.
+  - **`watr_search_tasks`** (`query`, `projectName?`, `status?`, `taskType?`, `tag?`, `top?`) — calls `GET /api/v1/projects/{projectId}/tasks/search` for semantic vector search.
   - **`watr_get_task`** (`idOrHandle`, `projectName?`) — if `Guid.TryParse(idOrHandle, out var id)` succeeds, calls `GET /api/v1/tasks/{id}`; otherwise resolves the project and calls `GET /api/v1/projects/{projectId}/tasks/handle/{idOrHandle}`.
-  - **`watr_create_task`** (`title`, `handle`, `body?`, `taskType?`, `priority?`, `projectName?`) — calls `POST /api/v1/projects/{projectId}/tasks` and returns the created `TaskItemDto` JSON.
-  - **`watr_update_task`** (`id`, `title?`, `body?`, `handle?`, `taskType?`, `status?`, `priority?`) — calls `PATCH /api/v1/tasks/{id}`.
-  - **`watr_claim_task`** (`id`) — calls `POST /api/v1/tasks/{id}/claim`.
-  - **`watr_release_task`** (`id`) — calls `POST /api/v1/tasks/{id}/release`.
+  - **`watr_create_task`** (`title`, `handle`, `body?`, `taskType?`, `priority?`, `status?`, `tags?`, `supersededByHandle?`, `projectName?`) — calls `POST /api/v1/projects/{projectId}/tasks` and returns the created `TaskItemDto` JSON.
+  - **`watr_record_decision`** (`title`, `handle`, `rationale`, `tags?`, `supersedesHandle?`, `projectName?`) — records an architectural or design decision (`TaskType = "Decision"`, `Status = "Completed"`) in a single call and optionally updates `supersedesHandle` with `SupersededByHandle`.
+  - **`watr_update_task`** (`id`, `title?`, `body?`, `handle?`, `taskType?`, `status?`, `priority?`, `tags?`, `supersededByHandle?`) — calls `PATCH /api/v1/tasks/{id}` and returns the updated `TaskItemDto` in a single round-trip.
+  - **`watr_claim_task`** (`id`) — calls `POST /api/v1/tasks/{id}/claim` and returns the updated `TaskItemDto`.
+  - **`watr_release_task`** (`id`) — calls `POST /api/v1/tasks/{id}/release` and returns the updated `TaskItemDto`.
   - **`watr_complete_task`** (`id`, `verificationNote?`) — if `verificationNote` is provided, calls `POST /api/v1/tasks/{id}/notes`, then calls `PATCH /api/v1/tasks/{id}` with `Status = Completed`.
   - **`watr_add_note`** (`id`, `content`) — calls `POST /api/v1/tasks/{id}/notes`.
 
@@ -1246,7 +1258,7 @@ This phase adds a built-in Model Context Protocol (`stdio`) server to `watr` so 
 
 ### 10.5 Update Agent Skill & Configure Antigravity
 
-- [x] Update `src/WATR.Cli/skill/watr-manager/SKILL.md` to document both the **MCP Tools** (preferred when the `watr` MCP server is connected) and the **CLI commands** (fallback), including guidance on using `watr_search_tasks` / `watr search` before creating new tasks to avoid duplicates and discover prior context.
+- [x] Update `skills/watr/SKILL.md`, `.agents/skills/watr/SKILL.md`, and `src/WATR.Cli/skill/watr-manager/SKILL.md` to document both the **MCP Tools** (preferred when the `watr` MCP server is connected) and the **CLI commands** (fallback), including guidance on using `watr_search_tasks` / `watr_record_decision` for decision support and context offloading.
 - [x] Configure Antigravity's `mcp_config.json` to register the `watr` MCP server:
   ```json
   {
@@ -1262,6 +1274,30 @@ This phase adds a built-in Model Context Protocol (`stdio`) server to `watr` so 
 ### 10.6 Build & End-to-End Verification
 
 - [x] Build `WATR.Cli`: `dotnet build src/WATR.Cli`
-- [x] Test `watr mcp` with an MCP client or inspector by sending an `initialize` and `tools/list` JSON-RPC request over `stdin` and verifying that all 13 `watr_*` tools are returned on `stdout` with no extraneous console output.
-- [x] Invoke `watr_status`, `watr_create_task`, `watr_add_note`, and `watr_search_tasks` from Antigravity and verify real-time updates appear on the WATR Blazor dashboard.
+- [x] Test `watr mcp` with an MCP client or inspector by sending an `initialize` and `tools/list` JSON-RPC request over `stdin` and verifying that all 14 `watr_*` tools are returned on `stdout` with no extraneous console output.
+- [x] Invoke `watr_status`, `watr_create_task`, `watr_record_decision`, `watr_add_note`, and `watr_search_tasks` from Antigravity and verify real-time updates appear on the WATR Blazor dashboard.
+
+---
+
+## Phase 11: Decision Support System & Context Offloading Enhancements
+
+This phase enhances WATR's data model, ONNX embedding engine, REST API, CLI, and MCP tools so coding agents can offload architectural decisions, "why" rationale, and investigation findings out of model context and retrieve them with high precision.
+
+### 11.1 Add Decision Support Metadata (`Tags` & `SupersededByHandle`)
+- [x] Add `List<string> Tags` (primitive collection) and `[MaxLength(50)] string? SupersededByHandle` to `TaskItem` (`src/WATR.Shared/Models/TaskItem.cs`) and all task DTOs (`TaskItemDto`, `TaskItemSummaryDto`, `CreateTaskRequest`, `UpdateTaskRequest`, `PatchTaskRequest`).
+- [x] Add optional `TaskItemStatus? Status` to `CreateTaskRequest` (defaulting to `Completed` when `TaskType == "Decision"` and `Open` otherwise).
+- [x] Configure `entity.PrimitiveCollection(e => e.Tags);` in `WatrDbContext` and create EF Core migration `20261018140000_AddDecisionSupportMetadata`.
+- [x] Seed default `Project.TaskTypes` with `["Epic", "Task", "Bug", "Decision"]` in `ProjectService.CreateProjectAsync`.
+
+### 11.2 Multi-Chunk Sliding-Window ONNX Embeddings & Context-Aware Previews
+- [x] Upgrade `OnnxEmbeddingService.GenerateEmbeddingVectorAsync` (`src/WATR.Web/Services/OnnxEmbeddingService.cs`) to split documents longer than 254 content tokens into overlapping chunks (`ChunkOverlapTokens = 32`, `MaxChunks = 16`), mean-pooling each chunk and averaging + L2-normalizing the chunk vectors so long ADRs and investigation notes are never truncated at 256 tokens.
+- [x] Include `Tags` and `SupersededByHandle` in `OnnxEmbeddingService.BuildCompositeTaskText`.
+- [x] Enhance `TaskService.SearchTasksAsync` (`src/WATR.Web/Services/TaskService.cs`) to include `.Include(t => t.Notes)`, match notes/tags in the keyword fallback, prefix `[Superseded by {handle}] ` on superseded records, and surface `[Note] {snippet}` in `MatchedPreview` when a note matches the query terms better than the task body.
+
+### 11.3 Filtering, Single-Call Decision Offloading & Single-Roundtrip Mutations
+- [x] Add `taskType` and `tag` query parameters to `GET /api/v1/projects/{projectId}/tasks` and `GET /api/v1/projects/{projectId}/tasks/search`.
+- [x] Fix `TasksController.PatchTask` (`src/WATR.Web/Controllers/TasksController.cs`) to map `TaskType`, `Tags`, `SupersededByHandle`, `AssignedToUserId`, and `AssignedToName`.
+- [x] Update `PATCH /api/v1/tasks/{id}`, `POST /api/v1/tasks/{id}/claim`, and `POST /api/v1/tasks/{id}/release` to return `ActionResult<TaskItemDto>` (`200 OK`) directly so CLI and MCP tools avoid extra `GET` round-trips.
+- [x] Add `watr_record_decision` to `WatrMcpTools` (`src/WATR.Cli/Mcp/WatrMcpTools.cs`) for single-call architectural decision recording and automatic superseding of older decision handles.
+
 

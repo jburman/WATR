@@ -1,14 +1,17 @@
 # WATR Design Document
 
 ## 1. Overview
-**WATR** (Where's All the Records) is a task tracking system designed for AI coding agents and their human supervisors. It provides visibility into agent activities and facilitates coordination between multiple agents. The system consists of a centralized cloud-based web application (hosting both a Web UI and a REST API), a cross-platform CLI tool, a local **Model Context Protocol (MCP) server** (`watr mcp`) for seamless agent integration, and a built-in **CPU-based semantic search engine**.
+**WATR** (Where's All the Records) is a **task management and decision support system** designed for AI coding agents and their human supervisors. In addition to providing visibility into agent activities and coordinating active work across multiple agents, WATR serves as a persistent **knowledge store and external memory** for a project—capturing architectural decisions, trade-offs, root-cause investigations, and the rationale behind *why* things are the way they are.
+
+By offloading project history and architectural rationale into WATR rather than keeping everything in a model's finite context window, coding agents can efficiently look up historical context on demand via semantic vector search. The system consists of a centralized cloud-based web application (hosting both a Web UI and a REST API), a cross-platform CLI tool, a local **Model Context Protocol (MCP) server** (`watr mcp`) for seamless agent integration, and a built-in **CPU-based semantic search engine**.
 
 ### Core Goals
-1.  **Visibility:** Provide a dashboard for humans to monitor agent progress.
+1.  **Visibility:** Provide a real-time dashboard for humans to monitor agent progress and architectural decisions.
 2.  **Coordination:** Allow agents to claim tasks, leave notes, and update status to prevent work duplication.
-3.  **Accessibility:** Accessible via Web (humans), CLI/REST API (agents & humans), and native MCP tools (coding agents like Antigravity, Claude Code, and Cursor).
-4.  **Agent-Centric Interoperability:** Ensure all features are consumable by autonomous agents via MCP tool definitions, structured outputs (JSON), and stable identifiers.
-5.  **Semantic Discovery:** Enable agents and humans to find relevant historical tasks, bugs, and architectural notes by meaning rather than exact keyword matches, using lazy background CPU embeddings stored directly in SQLite.
+3.  **Decision Support & Context Offloading:** Provide a structured place to offload architectural decisions (`Decision` records), design trade-offs, and investigation logs out of model context so agents and humans can easily answer *"why are things built this way?"* over time.
+4.  **Accessibility:** Accessible via Web (humans), CLI/REST API (agents & humans), and native MCP tools (coding agents like Antigravity, Claude Code, and Cursor).
+5.  **Agent-Centric Interoperability:** Ensure all features are consumable by autonomous agents via MCP tool definitions, structured outputs (JSON), and stable identifiers.
+6.  **Semantic Discovery:** Enable agents and humans to find relevant historical tasks, bugs, and architectural decisions by meaning rather than exact keyword matches, using lazy background CPU embeddings stored directly in SQLite.
 
 ## 2. Architecture
 
@@ -62,7 +65,7 @@ graph TD
 *   **Semantic Search & Embeddings:**
     *   **Runtime:** `Microsoft.ML.OnnxRuntime` (CPU execution) + `Microsoft.ML.Tokenizers` (`BertTokenizer`).
     *   **Abstraction:** `Microsoft.Extensions.AI` (`IEmbeddingGenerator<string, Embedding<float>>`).
-    *   **Model:** `all-MiniLM-L6-v2` (quantized/FP32 ONNX, 384 dimensions, runs locally on CPU).
+    *   **Model:** `all-MiniLM-L6-v2` (quantized/FP32 ONNX, 384 dimensions, runs locally on CPU with multi-chunk sliding-window mean pooling for long documents and notes).
     *   **Similarity Computation:** `System.Numerics.Tensors.TensorPrimitives.CosineSimilarity` (SIMD-accelerated in-memory scan).
 *   **Frontend:** Blazor Server (Interactive Server) with **Radzen.Blazor** components.
 *   **CLI & MCP Server:** .NET 10 Console App using **Spectre.Console** for CLI UX and the official **ModelContextProtocol** C# SDK for `stdio` MCP server hosting (`watr mcp`).
@@ -102,7 +105,7 @@ The database uses SQLite. IDs for Tasks are **UUID v7** (Time-sortable).
 | `CreatedByUserId` | `Guid` | FK -> Users.Id |
 | `CreatedAt` | `DATETIME` | UTC |
 | `UpdatedAt` | `DATETIME` | UTC |
-| `TaskTypes` | `TEXT` | JSON Array (e.g., `["Epic", "Task", "Bug"]`) |
+| `TaskTypes` | `TEXT` | JSON Array (defaults to `["Epic", "Task", "Bug", "Decision"]`) |
 
 #### **ProjectMembers**
 | Column | Type | Notes |
@@ -117,10 +120,10 @@ The database uses SQLite. IDs for Tasks are **UUID v7** (Time-sortable).
 | `Id` | `Guid` | PK, UUID v7 |
 | `ProjectId` | `Guid` | FK -> Projects.Id |
 | `TaskNumber` | `INTEGER` | Incremental ID per project |
-| `TaskHandle` | `TEXT` | User-friendly ID (e.g., `42-login-fix`) |
-| `TaskType` | `TEXT` | e.g., "Epic", "Bug" |
+| `TaskHandle` | `TEXT` | User-friendly ID (e.g., `42-login-fix`, `45-adr-sqlite-vectors`) |
+| `TaskType` | `TEXT` | e.g., `"Epic"`, `"Task"`, `"Bug"`, `"Decision"` |
 | `Title` | `TEXT` | |
-| `Body` | `TEXT` | Markdown content |
+| `Body` | `TEXT` | Markdown content (Definition of Done, Plan, or Decision Rationale) |
 | `Status` | `INTEGER` | 0=Open, 1=InProgress, 2=Completed, 3=Blocked, 4=Cancelled |
 | `Priority` | `INTEGER` | 0=None, 1=Low, 2=Medium, 3=High, 4=Critical |
 | `AssignedToUserId` | `Guid` | FK -> Users.Id (Nullable) |
@@ -129,7 +132,9 @@ The database uses SQLite. IDs for Tasks are **UUID v7** (Time-sortable).
 | `CreatedAt` | `DATETIME` | UTC |
 | `UpdatedAt` | `DATETIME` | UTC |
 | `ClosedAt` | `DATETIME` | UTC, Nullable. Set when Status -> Completed or Cancelled |
-| `Embedding` | `BLOB` | Nullable. 384-dimensional `float32` vector (`1,536` bytes) representing composite task text (`Title` + `Body` + `Notes`) |
+| `Tags` | `TEXT` | JSON Array of tags or related component/file paths (e.g., `["auth", "OnnxEmbeddingService.cs"]`) |
+| `SupersededByHandle` | `TEXT` | Nullable. Handle of a newer task or decision that supersedes this record |
+| `Embedding` | `BLOB` | Nullable. 384-dimensional `float32` vector (`1,536` bytes) representing composite task text (`Title` + `Tags` + `SupersededByHandle` + `Body` + `Notes`) |
 | `EmbeddingUpdatedAt` | `DATETIME` | UTC, Nullable. Timestamp of when `Embedding` was last computed (`< UpdatedAt` indicates stale vector) |
 
 #### **TaskNotes**
@@ -212,20 +217,21 @@ Standard error codes: `bad_request`, `unauthorized`, `forbidden`, `not_found`, `
 
 ### 5.3 Endpoints
 *   `GET /projects` - List visible projects.
-*   `POST /projects` - Create a new project.
-*   `GET /projects/{id}/tasks` - List tasks. Supports filtering: `?status=Open`, `?assignedTo=me`, `?priority=High`.
-*   `GET /projects/{id}/tasks/search` - **Semantic Search** across tasks in a project.
-    *   Query parameters: `?q={searchText}&top=10&status=Open&minScore=0.25`.
-    *   Embeds `q` on the CPU via the local ONNX model, filters candidate tasks in SQLite, computes cosine similarity against stored `Embedding` blobs, and returns a ranked list of `TaskSearchResultDto` (`TaskItemSummaryDto` + `SimilarityScore` + `MatchedPreview`).
-    *   Falls back to substring matching (`Title` / `Body`) for any brand-new tasks whose background embedding is still pending.
-*   `POST /projects/{id}/tasks` - Create a new task (enqueues background embedding generation).
+*   `POST /projects` - Create a new project (defaults `TaskTypes` to `["Epic", "Task", "Bug", "Decision"]`).
+*   `GET /projects/{id}/tasks` - List tasks. Supports filtering: `?status=Open`, `?assignedTo=me`, `?priority=High`, `?taskType=Decision`, `?tag=auth`.
+*   `GET /projects/{id}/tasks/search` - **Semantic Search** across tasks, architectural decisions, and notes in a project.
+    *   Query parameters: `?q={searchText}&top=10&status=Open&taskType=Decision&tag=auth&minScore=0.25`.
+    *   Embeds `q` on the CPU via the local ONNX model, filters candidate tasks in SQLite (`ProjectId`, `Status`, `TaskType`, `Tags`), computes cosine similarity against stored `Embedding` blobs, and returns a ranked list of `TaskSearchResultDto` (`TaskItemSummaryDto` + `SimilarityScore` + context-aware `MatchedPreview`).
+    *   `MatchedPreview` prefixes `[Superseded by {handle}]` when a decision has been superseded, and automatically surfaces the highest-matching `[Note]` snippet when a query matches an investigation or completion note rather than the task body.
+    *   Falls back to substring matching (`Title` / `Body` / `Tags` / `Notes`) for any brand-new tasks whose background embedding is still pending.
+*   `POST /projects/{id}/tasks` - Create a new task or decision (enqueues background embedding generation). Accepts optional `status` (defaults to `Completed` when `taskType == "Decision"` and `Open` otherwise), `tags`, and `supersededByHandle`.
 *   `GET /projects/{id}/tasks/handle/{handle}` - Get task details by human-readable handle.
 *   `GET /tasks/{id}` - Get task details (includes notes inline).
-*   `PUT /tasks/{id}` - Full update of task (title, body, status, priority; enqueues background re-embedding).
-*   `PATCH /tasks/{id}` - Partial update. Accepts a JSON object with only the fields to change (enqueues background re-embedding if text changed).
-    *   Supports: `status`, `priority`, `title`, `body`, `taskHandle`, `taskType`, `assignedToUserId`, `assignedToName`.
-*   `POST /tasks/{id}/claim` - Assign task to current user (Agent).
-*   `POST /tasks/{id}/release` - Unassign task.
+*   `PUT /tasks/{id}` - Full update of task (`title`, `body`, `status`, `priority`, `taskHandle`, `taskType`, `tags`, `supersededByHandle`; returns updated `TaskItemDto` and enqueues background re-embedding).
+*   `PATCH /tasks/{id}` - Partial update. Accepts a JSON object with only the fields to change, returns the updated `TaskItemDto` (`200 OK`), and enqueues background re-embedding if text/metadata changed.
+    *   Supports: `status`, `priority`, `title`, `body`, `taskHandle`, `taskType`, `tags`, `supersededByHandle`, `assignedToUserId`, `assignedToName`.
+*   `POST /tasks/{id}/claim` - Assign task to current user (Agent) and return updated `TaskItemDto` (`200 OK`).
+*   `POST /tasks/{id}/release` - Unassign task and return updated `TaskItemDto` (`200 OK`).
 *   `GET /tasks/{id}/notes` - List notes for a task (paginated).
 *   `POST /tasks/{id}/notes` - Add a comment/note (updates `Task.UpdatedAt` and enqueues background re-embedding).
 *   `GET /user/me` - Current user info.
@@ -258,7 +264,7 @@ Since Blazor Server already maintains a persistent SignalR connection to the ser
         *   **Row Expansion:** Displays a read-only preview of the Task Body (rendered Markdown) and the latest notes directly within the grid.
 *   **Task Detail (Dialog/Page):**
     *   Title (Editable).
-    *   **Task Type Dropdown:** (e.g., Epic, Task) driven by Project configuration.
+    *   **Task Type Dropdown:** (e.g., Epic, Task, Bug, Decision) driven by Project configuration.
     *   Status Dropdown.
     *   Priority Dropdown.
     *   **Assignee Selection:**
@@ -291,16 +297,17 @@ Since Blazor Server already maintains a persistent SignalR connection to the ser
 *   `watr login`: Initiates device code flow.
 *   `watr logout`: Clears local credentials.
 *   `watr status`: Shows logged-in user, current project context, and summary counts (open/in-progress/blocked tasks).
-*   `watr list [--project <name>] [--status <filter>]`: Key-value table of tasks. Supports `--json` flag.
-*   `watr search <query> [--project <name>] [--status <filter>] [--top <n>] [--json]`: Performs semantic search across project tasks and notes, returning tasks ranked by similarity score.
+*   `watr list [--project <name>] [--status <filter>] [--type <type>] [--tag <tag>]`: Key-value table of tasks. Supports `--json` flag.
+*   `watr search <query> [--project <name>] [--status <filter>] [--type <type>] [--tag <tag>] [--top <n>] [--json]`: Performs semantic search across project tasks, decisions, and notes, returning tasks ranked by similarity score.
 *   `watr show <id-or-handle>`: Renders task details (renders Markdown to ANSI if possible). Supports `--json` flag.
-*   `watr add "Title" --handle "short-name" --body "Inline text" --project <name>`: Creates a task.
+*   `watr add "Title" --handle "short-name" [--body "Inline text"] [--type <type>] [--status <status>] [--tags "a,b"] [--superseded-by <handle>] [--project <name>]`: Creates a task or decision record.
     *   `--handle` is REQUIRED. It should be a short, lowercase identifier (e.g., `login-page`). The server will automatically prefix it with the task number (e.g., `42-login-page`).
+    *   When `--type Decision` is specified and `--status` is omitted, the server automatically creates the record in `Completed` status.
     *   Body supports:
         *   `--body "Inline markdown text"` for literal content.
         *   `--body @file.md` to read from a file (RECOMMENDED for complex markdown to avoid shell escaping issues).
         *   `--body -` to read from stdin (for piping).
-*   `watr update <id> [--status <status>] [--title "New Title"] [--body "text"] [--priority <level>]`: General-purpose update command for changing any task field. Supports file-based body updates via `@file.md`.
+*   `watr update <id> [--status <status>] [--title "New Title"] [--body "text"] [--priority <level>] [--type <type>] [--tags "a,b"] [--superseded-by <handle>]`: General-purpose update command for changing any task field. Supports file-based body updates via `@file.md`.
 *   `watr claim <id>`: Assigns task to self.
 *   `watr done <id>`: Marks task as completed.
 *   `watr note <id> "Message"`: Appends a note.
@@ -334,7 +341,7 @@ By building `watr mcp` directly into `WATR.Cli` using the official C# **`ModelCo
 > **Critical `stdio` Constraint:** When running in `watr mcp` mode, `stdout` is strictly reserved for JSON-RPC 2.0 MCP messages. All logging must be routed to `stderr` (or suppressed), and `ProjectContextHelper` must **never** prompt interactively via `AnsiConsole.Ask`—if no project is found in the tool arguments, `.watr/settings.json`, or `DefaultProject`, the tool returns a clear structured MCP error instructing the agent to specify `projectName` or call `watr_set_project`.
 
 ### 8.2 Exposed MCP Tools
-All tools return structured JSON responses (serialized from `WATR.Shared.DTOs`) so coding agents can inspect IDs, handles, statuses, and notes without parsing terminal tables.
+All tools return structured JSON responses (serialized from `WATR.Shared.DTOs`) so coding agents can inspect IDs, handles, statuses, tags, and notes without parsing terminal tables.
 
 | Tool Name | Parameters | Description |
 | :--- | :--- | :--- |
@@ -342,15 +349,16 @@ All tools return structured JSON responses (serialized from `WATR.Shared.DTOs`) 
 | `watr_list_projects` | `page?`, `pageSize?` | Lists all projects visible to the authenticated user. |
 | `watr_create_project` | `name`, `description?`, `taskTypes?` | Creates a new WATR project and optionally links it to the current workspace. |
 | `watr_set_project` | `projectName` | Links the current working directory (`.watr/settings.json`) to the specified project. |
-| `watr_list_tasks` | `projectName?`, `status?`, `priority?`, `assignedToMe?`, `page?`, `pageSize?` | Lists tasks in the project with optional filtering by status (`Open`, `InProgress`, `Completed`, `Blocked`, `Cancelled`), priority, and assignee. |
-| `watr_search_tasks` | `query`, `projectName?`, `status?`, `top?` | **Semantic Search:** Searches tasks and notes by natural-language meaning using vector similarity, returning ranked matches with similarity scores. |
-| `watr_get_task` | `idOrHandle`, `projectName?` | Retrieves full task details (Markdown body, metadata, and chronological notes) by UUID or task handle (e.g., `42-login-fix`). |
-| `watr_create_task` | `title`, `handle`, `body?`, `taskType?`, `priority?`, `projectName?` | Creates a new task or Epic. Accepts raw multi-line Markdown directly in `body` without temporary files or shell escaping. |
-| `watr_update_task` | `id`, `title?`, `body?`, `handle?`, `taskType?`, `status?`, `priority?` | Partially updates any combination of fields on an existing task. |
-| `watr_claim_task` | `id` | Claims (assigns) a task to the current user/agent and optionally sets status to `InProgress`. |
-| `watr_release_task` | `id` | Releases assignment of a task. |
+| `watr_list_tasks` | `projectName?`, `status?`, `priority?`, `taskType?`, `tag?`, `assignedToMe?`, `page?`, `pageSize?` | Lists tasks or decisions in the project with optional filtering by status (`Open`, `InProgress`, `Completed`, `Blocked`, `Cancelled`), priority, taskType (`Decision`, `Epic`, `Task`, `Bug`), tag, and assignee. |
+| `watr_search_tasks` | `query`, `projectName?`, `status?`, `taskType?`, `tag?`, `top?` | **Semantic Search:** Searches tasks, architectural decisions, and notes by natural-language meaning using vector similarity, returning ranked matches with similarity scores and context-aware snippets. |
+| `watr_get_task` | `idOrHandle`, `projectName?` | Retrieves full task/decision details (Markdown body, tags, superseded-by handle, metadata, and chronological notes) by UUID or task handle (e.g., `42-login-fix`). |
+| `watr_create_task` | `title`, `handle`, `body?`, `taskType?`, `priority?`, `status?`, `tags?`, `supersededByHandle?`, `projectName?` | Creates a new task, Epic, Bug, or Decision. Accepts raw multi-line Markdown directly in `body`. |
+| `watr_record_decision` | `title`, `handle`, `rationale`, `tags?`, `supersedesHandle?`, `projectName?` | **Single-Call Decision Offloading:** Records an architectural or design decision (`TaskType = "Decision"`, `Status = "Completed"`) in a single call and optionally marks an older decision (`supersedesHandle`) as superseded by the new decision's handle. |
+| `watr_update_task` | `id`, `title?`, `body?`, `handle?`, `taskType?`, `status?`, `priority?`, `tags?`, `supersededByHandle?` | Partially updates any combination of fields on an existing task or decision in a single round-trip. |
+| `watr_claim_task` | `id` | Claims (assigns) a task to the current user/agent and sets status to `InProgress` in a single round-trip. |
+| `watr_release_task` | `id` | Releases assignment of a task in a single round-trip. |
 | `watr_complete_task` | `id`, `verificationNote?` | Marks a task as `Completed` (and optionally appends a final verification note in a single atomic workflow). |
-| `watr_add_note` | `id`, `content` | Appends a Markdown activity/progress note to a task. |
+| `watr_add_note` | `id`, `content` | Appends a Markdown activity/progress or investigation note to a task. |
 
 ### 8.3 Agent Configuration Example (Antigravity / IDE)
 Coding agents like Antigravity configure the MCP server in their `mcp_config.json` (with zero secrets required in the config file after running `watr login` once):
@@ -370,7 +378,7 @@ Coding agents like Antigravity configure the MCP server in their `mcp_config.jso
 
 ## 9. Semantic Search & Background CPU Embedding Engine
 
-WATR includes a built-in semantic search capability so that coding agents and humans can query tasks by concept or symptom (e.g., *"token expiration race condition"*, *"FIDO2 passkey login failure"*, *"UI layout dark mode contrast"*) and find relevant tasks even when exact keywords differ.
+WATR includes a built-in semantic search capability so that coding agents and humans can query tasks and architectural decisions by concept, rationale, or symptom (e.g., *"why did we choose SQLite over Postgres"*, *"token expiration race condition"*, *"FIDO2 passkey login failure"*) and find relevant records even when exact keywords differ.
 
 ### 9.1 Review of Options & Architectural Decisions
 
@@ -378,6 +386,7 @@ WATR includes a built-in semantic search capability so that coding agents and hu
 *   **Option A: Local ONNX Runtime (`Microsoft.ML.OnnxRuntime` + `Microsoft.ML.Tokenizers`) with `all-MiniLM-L6-v2` [Selected]**
     *   Runs 100% locally on the CPU inside the `WATR.Web` process—no GPU, external API keys, or extra sidecar containers required.
     *   `all-MiniLM-L6-v2` (384 dimensions) is compact (~23 MB INT8 quantized or ~80 MB FP32) and embeds a typical task in **5–15 ms** on a standard CPU core.
+    *   **Multi-Chunk Sliding-Window Mean Pooling:** Because `all-MiniLM-L6-v2` has a 256-token sequence window (`MaxContentTokens = 254` plus `[CLS]` and `[SEP]`), long architectural decision records (ADRs) or tasks with many notes would otherwise be truncated after ~180 words. `OnnxEmbeddingService` splits longer documents into overlapping 254-token windows (`ChunkOverlapTokens = 32`, up to `MaxChunks = 16`, covering ~3,500+ tokens), mean-pools and L2-normalizes each chunk vector, and then averages and L2-normalizes the chunk vectors into a single 384-d document embedding so notes and rationale at the bottom of a long record remain fully searchable.
     *   Exposed through the standard `Microsoft.Extensions.AI` `IEmbeddingGenerator<string, Embedding<float>>` interface, making it easy to swap or mock in unit tests.
 *   **Option B: External Cloud Embedding APIs (OpenAI / Azure OpenAI / Gemini)**
     *   Requires external API keys, incurs per-token cost, and adds network latency/configuration overhead.
@@ -387,19 +396,21 @@ WATR includes a built-in semantic search capability so that coding agents and hu
 #### 2. Vector Storage & Similarity Search in SQLite
 *   **Option A: Native SQLite `BLOB` + .NET SIMD `TensorPrimitives.CosineSimilarity` [Selected]**
     *   Each task's 384-float normalized embedding is stored directly on the `Tasks` table as a `1,536`-byte `BLOB` (`byte[]? Embedding`).
-    *   When searching a project, EF Core first filters candidate tasks in SQLite using standard indexed columns (`WHERE ProjectId = @projectId AND Status = ... AND Embedding IS NOT NULL`), selecting only `{ Id, Embedding }`.
+    *   When searching a project, EF Core first filters candidate tasks in SQLite using standard indexed columns (`WHERE ProjectId = @projectId AND Status = ... AND TaskType = ...`), selecting `{ Id, Embedding, Title, Body, Tags, Notes }`.
     *   The server then casts the `byte[]` blobs to `ReadOnlySpan<float>` via `MemoryMarshal.Cast<byte, float>` (zero-copy) and computes exact cosine similarity using hardware-accelerated SIMD instructions (`System.Numerics.Tensors.TensorPrimitives.CosineSimilarity`).
     *   *Why this wins for WATR:*
         1.  **Zero Native Extension Deployment Issues:** Avoids bundling platform-specific C extensions (`.dll`, `.so`, `.dylib`) or dealing with `sqlite3_load_extension` restrictions on Azure App Service.
-        2.  **Full EF Core Compatibility:** Works seamlessly with standard EF Core migrations and relational pre-filtering (`ProjectId`, `Status`, `Priority`).
+        2.  **Full EF Core Compatibility:** Works seamlessly with standard EF Core migrations and relational pre-filtering (`ProjectId`, `Status`, `TaskType`, `Tags`).
         3.  **Fast Enough with Zero Complexity:** Scanning 5,000 tasks (384 floats each = ~7.5 MB total) using SIMD `TensorPrimitives` takes **under 2 milliseconds** on CPU.
 *   **Option B: `sqlite-vec` (`vec0` Virtual Table Extension)**
     *   Executes KNN search inside SQLite C code, but requires platform-specific native binaries, manual `LoadExtension` management, virtual table synchronization outside EF Core migrations, and has limitations when combining KNN queries with relational `WHERE` clauses (`ProjectId`, `Status`).
 
-#### 3. Embedding Document Granularity
-*   **Composite Task Vector (Selected):** A single embedding vector is stored per task, built from a structured composite document combining `TaskHandle`, `TaskType`, `Title`, `Body`, and all `TaskNotes`:
+#### 3. Embedding Document Granularity & Context-Aware Previews
+*   **Composite Task Vector (Selected):** A single embedding vector is stored per task, built from a structured composite document combining `TaskHandle`, `TaskType`, `Title`, `Tags`, `SupersededByHandle`, `Body`, and all `TaskNotes`:
     ```text
     [{TaskType}] {TaskHandle}: {Title}
+    Tags: {tag1, tag2}
+    Superseded by: {SupersededByHandle}
 
     {Body}
 
@@ -407,7 +418,8 @@ WATR includes a built-in semantic search capability so that coding agents and hu
     - {Note1.Content}
     - {Note2.Content}
     ```
-    Whenever a task is created, its title/body is updated, or a note is added, the task is re-queued for background re-embedding.
+    Whenever a task is created, its title/body/tags/superseded-by metadata is updated, or a note is added, the task is re-queued for background re-embedding.
+*   **Context-Aware `MatchedPreview`:** When returning search results, `TaskService` inspects the query tokens against the task body and notes. If a `TaskNote` contains a stronger match than the `Body`, `MatchedPreview` automatically returns `[Note] {snippet}` (and prepends `[Superseded by {handle}] ` if the record has been superseded), enabling agents to immediately see whether a record is active and which note matched without fetching every task in full.
 
 ### 9.2 Lazy Background Processing Pipeline
 
@@ -423,7 +435,7 @@ To ensure task creation and updates remain instantaneous and CPU usage stays min
     *   **Startup & Periodic Catch-Up Sweep:** After a short startup delay (e.g., 10 seconds) and periodically every 5 minutes, the worker queries SQLite for any tasks where `Embedding == null || EmbeddingUpdatedAt == null || EmbeddingUpdatedAt < UpdatedAt` and enqueues their IDs. This guarantees eventual consistency even if the server restarts before draining the in-memory channel.
     *   **Debouncing & Batching:** When a `taskId` is dequeued, the worker fetches the latest `TaskItem` + `Notes` from `WatrDbContext`, checks if `EmbeddingUpdatedAt >= UpdatedAt` (skipping redundant work if multiple rapid edits occurred), generates the 384-d L2-normalized vector on the CPU, writes the `byte[]` `Embedding` and `EmbeddingUpdatedAt = DateTime.UtcNow`, and saves to SQLite.
 4.  **Hybrid Fallback during Search:**
-    *   If a task was created milliseconds ago and its `Embedding` is still `null`, `SearchTasksAsync` includes a lightweight case-insensitive keyword fallback (`Title.Contains(query) || Body.Contains(query)`) so newly created tasks are still discoverable immediately.
+    *   If a task was created milliseconds ago and its `Embedding` is still `null`, `SearchTasksAsync` includes a lightweight case-insensitive keyword fallback across `Title`, `Body`, `Tags`, and `Notes` so newly created tasks and decisions are still discoverable immediately.
 
 ---
 
@@ -483,13 +495,14 @@ A cartoon vector-style watr (small onion) with a determined, slightly manic faci
     *   Implement Radzen DataGrid with Row Expansion.
     *   Task Detail Views with Hybrid Assignee selection and Dark Mode theming.
     *   Real-time updates via SignalR.
-5.  **Phase 5: Semantic Search & Background CPU Embeddings** (Planned)
+5.  **Phase 5: Semantic Search & Background CPU Embeddings** (Completed)
     *   Add `Embedding` (`BLOB`) and `EmbeddingUpdatedAt` (`DATETIME`) to `Tasks` table.
-    *   Implement local CPU ONNX embedding generator (`all-MiniLM-L6-v2` via `Microsoft.ML.OnnxRuntime` & `Microsoft.ML.Tokenizers`).
+    *   Implement local CPU ONNX embedding generator (`all-MiniLM-L6-v2` via `Microsoft.ML.OnnxRuntime` & `Microsoft.ML.Tokenizers`) with multi-chunk sliding-window mean pooling.
     *   Implement `TaskEmbeddingQueue` and lazy `TaskEmbeddingWorker` `BackgroundService`.
     *   Implement SIMD cosine similarity search (`TensorPrimitives.CosineSimilarity`) in `TaskService`, REST API (`/api/v1/projects/{id}/tasks/search`), Blazor Dashboard, and `watr search` CLI command.
-6.  **Phase 6: MCP Server (`watr mcp`) for Coding Agents** (Planned)
+6.  **Phase 6: MCP Server (`watr mcp`) & Decision Support System** (Completed)
     *   Integrate official C# `ModelContextProtocol` SDK into `WATR.Cli`.
     *   Implement `watr mcp` `stdio` server reusing local CLI auth tokens and `.watr/settings.json` project context.
-    *   Expose full suite of task, note, project, and semantic search MCP tools and update `watr-manager` agent skill.
+    *   Add Decision Support & Context Offloading capabilities (`Decision` task type, `Tags`, `SupersededByHandle`, `watr_record_decision` MCP tool, `taskType`/`tag` filtering, context-aware search previews, and single-roundtrip mutation responses).
+
 

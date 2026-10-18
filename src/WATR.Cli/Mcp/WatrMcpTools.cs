@@ -149,12 +149,14 @@ public class WatrMcpTools
     }
 
     [McpServerTool(Name = "watr_list_tasks", ReadOnly = true)]
-    [Description("List tasks within a project with optional filtering by status, priority, and assignment.")]
+    [Description("List tasks or decision records within a project with optional filtering by status, priority, taskType, tag, and assignment.")]
     public async Task<List<TaskItemSummaryDto>> ListTasksAsync(
         [Description("Project name (defaults to active project if omitted)")] string? project = null,
         [Description("Filter by task status: Open, InProgress, Completed, Blocked, Cancelled")] string? status = null,
         [Description("Filter by priority: None, Low, Medium, High, Critical")] string? priority = null,
         [Description("Filter to tasks assigned to me ('me') or null for all")] string? assignedTo = null,
+        [Description("Filter by task type (e.g. 'Task', 'Epic', 'Bug', 'Decision')")] string? taskType = null,
+        [Description("Filter by tag or component (e.g. 'auth', 'OnnxEmbeddingService.cs')")] string? tag = null,
         [Description("Page number (default: 1)")] int page = 1,
         [Description("Page size (default: 50)")] int pageSize = 50,
         CancellationToken cancellationToken = default)
@@ -173,6 +175,14 @@ public class WatrMcpTools
             if (!string.IsNullOrWhiteSpace(assignedTo))
             {
                 path += $"&assignedTo={Uri.EscapeDataString(assignedTo)}";
+            }
+            if (!string.IsNullOrWhiteSpace(taskType))
+            {
+                path += $"&taskType={Uri.EscapeDataString(taskType)}";
+            }
+            if (!string.IsNullOrWhiteSpace(tag))
+            {
+                path += $"&tag={Uri.EscapeDataString(tag)}";
             }
 
             var response = await _api.GetAsync<PaginatedResponse<TaskItemSummaryDto>>(path);
@@ -197,11 +207,13 @@ public class WatrMcpTools
     }
 
     [McpServerTool(Name = "watr_search_tasks", ReadOnly = true)]
-    [Description("Perform semantic vector search across project tasks by natural language query/intent.")]
+    [Description("Perform semantic vector search across project tasks, notes, and architectural decisions by natural language query/intent.")]
     public async Task<List<TaskSearchResultDto>> SearchTasksAsync(
         [Description("Natural language search query (e.g. 'implement auth tokens', 'fix database deadlock')")] string query,
         [Description("Project name (defaults to active project if omitted)")] string? project = null,
         [Description("Filter by task status: Open, InProgress, Completed, Blocked, Cancelled")] string? status = null,
+        [Description("Filter by task type (e.g. 'Task', 'Epic', 'Bug', 'Decision')")] string? taskType = null,
+        [Description("Filter by tag or component (e.g. 'auth', 'OnnxEmbeddingService.cs')")] string? tag = null,
         [Description("Maximum number of results to return (default: 10)")] int top = 10,
         [Description("Minimum cosine similarity score threshold 0.0 to 1.0 (default: 0.25)")] float minScore = 0.25f,
         CancellationToken cancellationToken = default)
@@ -220,6 +232,14 @@ public class WatrMcpTools
             if (parsedStatus.HasValue)
             {
                 path += $"&status={parsedStatus.Value}";
+            }
+            if (!string.IsNullOrWhiteSpace(taskType))
+            {
+                path += $"&taskType={Uri.EscapeDataString(taskType)}";
+            }
+            if (!string.IsNullOrWhiteSpace(tag))
+            {
+                path += $"&tag={Uri.EscapeDataString(tag)}";
             }
 
             return await _api.GetAsync<List<TaskSearchResultDto>>(path);
@@ -267,13 +287,16 @@ public class WatrMcpTools
     }
 
     [McpServerTool(Name = "watr_create_task", ReadOnly = false, Destructive = false)]
-    [Description("Create a new task in a project.")]
+    [Description("Create a new task, epic, bug, or decision record in a project.")]
     public async Task<TaskItemDto> CreateTaskAsync(
         [Description("Task title")] string title,
         [Description("Unique task handle (e.g. 'PROJ-1', 'AUTH-42')")] string handle,
         [Description("Detailed task description or body content")] string? body = null,
         [Description("Task priority: None, Low, Medium, High, Critical")] string? priority = null,
-        [Description("Optional task category or type")] string? taskType = null,
+        [Description("Optional task category or type (e.g. 'Task', 'Epic', 'Bug', 'Decision')")] string? taskType = null,
+        [Description("Optional initial status: Open, InProgress, Completed, Blocked, Cancelled")] string? status = null,
+        [Description("Optional comma-separated tags or related file paths (e.g. 'auth,OnnxEmbeddingService.cs')")] string? tags = null,
+        [Description("Optional handle of a newer task/decision that supersedes this item")] string? supersededByHandle = null,
         [Description("Project name (defaults to active project if omitted)")] string? project = null,
         CancellationToken cancellationToken = default)
     {
@@ -296,7 +319,10 @@ public class WatrMcpTools
                 TaskHandle = handle.Trim(),
                 Body = resolvedBody,
                 Priority = ParsePriority(priority),
-                TaskType = taskType
+                TaskType = taskType,
+                Status = ParseStatus(status),
+                Tags = ParseTags(tags),
+                SupersededByHandle = string.IsNullOrWhiteSpace(supersededByHandle) ? null : supersededByHandle.Trim()
             };
 
             return await _api.PostAsync<TaskItemDto>($"api/v1/projects/{projectDto.Id}/tasks", request);
@@ -311,6 +337,65 @@ public class WatrMcpTools
         }
     }
 
+    [McpServerTool(Name = "watr_record_decision", ReadOnly = false, Destructive = false)]
+    [Description("Record an architectural decision, trade-off rationale ('why X was chosen over Y'), or investigation summary as a Completed 'Decision' record for future semantic lookup.")]
+    public async Task<TaskItemDto> RecordDecisionAsync(
+        [Description("Concise decision title (e.g. 'Use SQLite BLOB + SIMD for vector search')")] string title,
+        [Description("Short kebab-case decision handle slug (e.g. 'adr-sqlite-vectors')")] string handle,
+        [Description("Markdown body explaining context, options considered, decision rationale, and consequences")] string body,
+        [Description("Optional comma-separated tags or affected file/component paths (e.g. 'search,sqlite,OnnxEmbeddingService.cs')")] string? tags = null,
+        [Description("Optional handle or GUID of an older decision that this decision supersedes")] string? supersedesHandle = null,
+        [Description("Project name (defaults to active project if omitted)")] string? project = null,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(title)) throw new McpException("Decision title is required.");
+        if (string.IsNullOrWhiteSpace(handle)) throw new McpException("Decision handle is required.");
+        if (string.IsNullOrWhiteSpace(body)) throw new McpException("Decision body/rationale is required.");
+
+        try
+        {
+            var projectDto = await ResolveProjectDtoAsync(project, cancellationToken);
+
+            var resolvedBody = body;
+            if (resolvedBody.StartsWith("@") && File.Exists(resolvedBody[1..]))
+            {
+                resolvedBody = await File.ReadAllTextAsync(resolvedBody[1..], cancellationToken);
+            }
+
+            var createRequest = new CreateTaskRequest
+            {
+                Title = title.Trim(),
+                TaskHandle = handle.Trim(),
+                Body = resolvedBody,
+                TaskType = "Decision",
+                Priority = TaskPriority.Medium,
+                Status = TaskItemStatus.Completed,
+                Tags = ParseTags(tags)
+            };
+
+            var created = await _api.PostAsync<TaskItemDto>($"api/v1/projects/{projectDto.Id}/tasks", createRequest);
+
+            if (!string.IsNullOrWhiteSpace(supersedesHandle) && !string.IsNullOrWhiteSpace(created.TaskHandle))
+            {
+                var oldId = await ResolveTaskIdAsync(supersedesHandle.Trim(), projectDto.Name, cancellationToken);
+                await _api.PatchAsync<TaskItemDto>($"api/v1/tasks/{oldId}", new PatchTaskRequest
+                {
+                    SupersededByHandle = created.TaskHandle
+                });
+            }
+
+            return created;
+        }
+        catch (McpException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            throw new McpException($"Failed to record decision '{handle}': {ex.Message}", ex);
+        }
+    }
+
     [McpServerTool(Name = "watr_update_task", ReadOnly = false, Destructive = false)]
     [Description("Update fields of an existing task.")]
     public async Task<TaskItemDto> UpdateTaskAsync(
@@ -321,6 +406,8 @@ public class WatrMcpTools
         [Description("New priority: None, Low, Medium, High, Critical")] string? priority = null,
         [Description("New task handle")] string? handle = null,
         [Description("New task type")] string? taskType = null,
+        [Description("Optional comma-separated tags or related file paths")] string? tags = null,
+        [Description("Optional handle of a newer task/decision that supersedes this item")] string? supersededByHandle = null,
         [Description("Project name (needed if idOrHandle is a handle)")] string? project = null,
         CancellationToken cancellationToken = default)
     {
@@ -341,11 +428,12 @@ public class WatrMcpTools
                 Status = ParseStatus(status),
                 Priority = string.IsNullOrWhiteSpace(priority) ? null : ParsePriority(priority),
                 TaskHandle = handle,
-                TaskType = taskType
+                TaskType = taskType,
+                Tags = ParseTags(tags),
+                SupersededByHandle = supersededByHandle
             };
 
-            await _api.PatchAsync($"api/v1/tasks/{taskId}", patchRequest);
-            return await _api.GetAsync<TaskItemDto>($"api/v1/tasks/{taskId}");
+            return await _api.PatchAsync<TaskItemDto>($"api/v1/tasks/{taskId}", patchRequest);
         }
         catch (McpException)
         {
@@ -367,8 +455,7 @@ public class WatrMcpTools
         try
         {
             var taskId = await ResolveTaskIdAsync(idOrHandle, project, cancellationToken);
-            await _api.PostAsync($"api/v1/tasks/{taskId}/claim");
-            return await _api.GetAsync<TaskItemDto>($"api/v1/tasks/{taskId}");
+            return await _api.PostAsync<TaskItemDto>($"api/v1/tasks/{taskId}/claim");
         }
         catch (McpException)
         {
@@ -390,8 +477,7 @@ public class WatrMcpTools
         try
         {
             var taskId = await ResolveTaskIdAsync(idOrHandle, project, cancellationToken);
-            await _api.PostAsync($"api/v1/tasks/{taskId}/release");
-            return await _api.GetAsync<TaskItemDto>($"api/v1/tasks/{taskId}");
+            return await _api.PostAsync<TaskItemDto>($"api/v1/tasks/{taskId}/release");
         }
         catch (McpException)
         {
@@ -418,8 +504,7 @@ public class WatrMcpTools
             {
                 await _api.PostAsync<TaskNoteDto>($"api/v1/tasks/{taskId}/notes", new CreateTaskNoteRequest { Content = verificationNote.Trim() });
             }
-            await _api.PatchAsync($"api/v1/tasks/{taskId}", new PatchTaskRequest { Status = TaskItemStatus.Completed });
-            return await _api.GetAsync<TaskItemDto>($"api/v1/tasks/{taskId}");
+            return await _api.PatchAsync<TaskItemDto>($"api/v1/tasks/{taskId}", new PatchTaskRequest { Status = TaskItemStatus.Completed });
         }
         catch (McpException)
         {
@@ -509,5 +594,15 @@ public class WatrMcpTools
         if (string.IsNullOrWhiteSpace(status)) return null;
         if (Enum.TryParse<TaskItemStatus>(status, true, out var s)) return s;
         throw new McpException($"Invalid status '{status}'. Valid statuses: Open, InProgress, Completed, Blocked, Cancelled.");
+    }
+
+    private static List<string>? ParseTags(string? tags)
+    {
+        if (string.IsNullOrWhiteSpace(tags)) return null;
+        return tags
+            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Where(t => !string.IsNullOrWhiteSpace(t))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
     }
 }

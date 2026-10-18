@@ -169,7 +169,7 @@ public class ProjectService
             UpdatedAt = DateTime.UtcNow,
             TaskTypes = request.TaskTypes != null && request.TaskTypes.Any() 
                 ? request.TaskTypes 
-                : new List<string> { "Epic", "Task" }
+                : new List<string> { "Epic", "Task", "Bug", "Decision" }
         };
 
         project.Members.Add(new ProjectMember

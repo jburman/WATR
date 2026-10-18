@@ -73,6 +73,9 @@ public class OnnxEmbeddingServiceTests
         {
             Title = "Fix database latency",
             Body = "Investigate slow SQLite queries on large datasets.",
+            TaskType = "Decision",
+            Tags = new List<string> { "sqlite", "performance" },
+            SupersededByHandle = "42-new-indexing",
             Notes = new List<TaskNote>
             {
                 new() { Content = "Indexed the CreatedAt column." },
@@ -84,6 +87,8 @@ public class OnnxEmbeddingServiceTests
 
         Assert.Contains("Fix database latency", text);
         Assert.Contains("Investigate slow SQLite queries", text);
+        Assert.Contains("Tags: sqlite, performance", text);
+        Assert.Contains("Superseded by: 42-new-indexing", text);
         Assert.Contains("Indexed the CreatedAt column.", text);
         Assert.Contains("Benchmark completed with 50% improvement.", text);
     }

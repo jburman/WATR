@@ -23,6 +23,8 @@ public class TasksController : ApiControllerBase
         [FromQuery] TaskItemStatus? status,
         [FromQuery] TaskPriority? priority,
         [FromQuery] string? assignedTo,
+        [FromQuery] string? taskType = null,
+        [FromQuery] string? tag = null,
         int page = 1,
         int pageSize = 20)
     {
@@ -35,7 +37,7 @@ public class TasksController : ApiControllerBase
 
         try
         {
-            var result = await _taskService.GetTasksAsync(projectId, statuses, priority, myTasksOnly, userId, page, pageSize);
+            var result = await _taskService.GetTasksAsync(projectId, statuses, priority, myTasksOnly, userId, page, pageSize, taskType, tag);
             return result;
         }
         catch (UnauthorizedAccessException)
@@ -49,6 +51,8 @@ public class TasksController : ApiControllerBase
         Guid projectId,
         [FromQuery] string q,
         [FromQuery] TaskItemStatus? status = null,
+        [FromQuery] string? taskType = null,
+        [FromQuery] string? tag = null,
         [FromQuery] int top = 10,
         [FromQuery] float minScore = 0.25f)
     {
@@ -58,7 +62,7 @@ public class TasksController : ApiControllerBase
 
         try
         {
-            var results = await _taskService.SearchTasksAsync(projectId, q, status, top, minScore, userId);
+            var results = await _taskService.SearchTasksAsync(projectId, q, status, top, minScore, userId, taskType, tag);
             return results;
         }
         catch (UnauthorizedAccessException)
@@ -134,34 +138,33 @@ public class TasksController : ApiControllerBase
     }
 
     [HttpPatch("{id}")]
-    public async Task<IActionResult> PatchTask(Guid id, PatchTaskRequest request)
+    public async Task<ActionResult<TaskItemDto>> PatchTask(Guid id, PatchTaskRequest request)
     {
         var userIdStr = User.FindFirstValue(ClaimTypes.NameIdentifier);
         if (userIdStr == null) return Unauthorized();
         var userId = Guid.Parse(userIdStr);
 
-        var updateRequest = new UpdateTaskRequest
-        {
-            Title = request.Title ?? "",
-            Body = request.Body ?? "",
-            TaskHandle = request.TaskHandle,
-            Status = request.Status ?? TaskItemStatus.Open,
-            Priority = request.Priority ?? TaskPriority.None
-        };
-        
         try
         {
             var task = await _taskService.GetTaskAsync(id, userId);
             if (task == null) return NotFound();
 
-            updateRequest.Title = request.Title ?? task.Title;
-            updateRequest.Body = request.Body ?? task.Body;
-            updateRequest.TaskHandle = request.TaskHandle ?? task.TaskHandle;
-            updateRequest.Status = request.Status == null ? task.Status : request.Status.Value;
-            updateRequest.Priority = request.Priority == null ? task.Priority : request.Priority.Value;
+            var updateRequest = new UpdateTaskRequest
+            {
+                Title = request.Title ?? task.Title,
+                Body = request.Body ?? task.Body,
+                TaskHandle = request.TaskHandle ?? task.TaskHandle,
+                TaskType = request.TaskType ?? task.TaskType,
+                Status = request.Status ?? task.Status,
+                Priority = request.Priority ?? task.Priority,
+                AssignedToUserId = request.AssignedToUserId ?? task.AssignedToUserId,
+                AssignedToName = request.AssignedToName ?? task.AssignedToName,
+                Tags = request.Tags ?? task.Tags,
+                SupersededByHandle = request.SupersededByHandle ?? task.SupersededByHandle
+            };
 
-            await _taskService.UpdateTaskAsync(id, updateRequest, userId);
-            return NoContent();
+            var updated = await _taskService.UpdateTaskAsync(id, updateRequest, userId);
+            return Ok(updated);
         }
         catch (UnauthorizedAccessException)
         {
@@ -174,7 +177,7 @@ public class TasksController : ApiControllerBase
     }
 
     [HttpPost("{id}/claim")]
-    public async Task<IActionResult> ClaimTask(Guid id)
+    public async Task<ActionResult<TaskItemDto>> ClaimTask(Guid id)
     {
         var userIdStr = User.FindFirstValue(ClaimTypes.NameIdentifier);
         if (userIdStr == null) return Unauthorized();
@@ -182,8 +185,8 @@ public class TasksController : ApiControllerBase
 
         try
         {
-            await _taskService.ClaimTaskAsync(id, userId);
-            return NoContent();
+            var updated = await _taskService.ClaimTaskAsync(id, userId);
+            return Ok(updated);
         }
         catch (UnauthorizedAccessException)
         {
@@ -197,7 +200,7 @@ public class TasksController : ApiControllerBase
     }
 
     [HttpPost("{id}/release")]
-    public async Task<IActionResult> ReleaseTask(Guid id)
+    public async Task<ActionResult<TaskItemDto>> ReleaseTask(Guid id)
     {
         var userIdStr = User.FindFirstValue(ClaimTypes.NameIdentifier);
         if (userIdStr == null) return Unauthorized();
@@ -205,8 +208,8 @@ public class TasksController : ApiControllerBase
 
         try
         {
-            await _taskService.ReleaseTaskAsync(id, userId);
-            return NoContent();
+            var updated = await _taskService.ReleaseTaskAsync(id, userId);
+            return Ok(updated);
         }
         catch (UnauthorizedAccessException)
         {

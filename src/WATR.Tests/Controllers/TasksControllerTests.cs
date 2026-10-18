@@ -69,15 +69,65 @@ public class TasksControllerTests : ControllerTestBase
         var task = await createRes.Content.ReadFromJsonAsync<TaskItemDto>();
 
         // Patch
-        var patch = new PatchTaskRequest { Status = TaskItemStatus.InProgress };
+        var patch = new PatchTaskRequest
+        {
+            Status = TaskItemStatus.InProgress,
+            TaskType = "Decision",
+            Tags = new List<string> { "auth", "passkeys" },
+            SupersededByHandle = "99-new-decision"
+        };
         var response = await _client.PatchAsJsonAsync($"api/v1/tasks/{task!.Id}", patch);
         
         Assert.True(response.IsSuccessStatusCode);
+        var patchedDto = await response.Content.ReadFromJsonAsync<TaskItemDto>();
+        Assert.NotNull(patchedDto);
+        Assert.Equal(TaskItemStatus.InProgress, patchedDto.Status);
+        Assert.Equal("Decision", patchedDto.TaskType);
+        Assert.Contains("auth", patchedDto.Tags);
+        Assert.Equal("99-new-decision", patchedDto.SupersededByHandle);
 
         // Verify
         var getRes = await _client.GetAsync($"api/v1/tasks/{task.Id}");
         var updatedTask = await getRes.Content.ReadFromJsonAsync<TaskItemDto>();
         Assert.Equal(TaskItemStatus.InProgress, updatedTask!.Status);
+        Assert.Equal("Decision", updatedTask.TaskType);
+    }
+
+    [Fact]
+    public async Task CreateDecision_ShouldDefaultToCompletedAndFilterByTypeAndTag()
+    {
+        var user = await CreateUserAndAuthenticateAsync();
+        var project = await CreateProjectAsync(user.Id);
+
+        var decisionRes = await _client.PostAsJsonAsync($"api/v1/projects/{project.Id}/tasks", new CreateTaskRequest
+        {
+            Title = "Use SQLite BLOBs with SIMD for vector search",
+            TaskHandle = "adr-sqlite-simd",
+            TaskType = "Decision",
+            Body = "Avoids native C extension deployment issues on Azure App Service while scanning 5k tasks in <2ms.",
+            Tags = new List<string> { "search", "sqlite" }
+        });
+        decisionRes.EnsureSuccessStatusCode();
+        var decision = await decisionRes.Content.ReadFromJsonAsync<TaskItemDto>();
+
+        Assert.NotNull(decision);
+        Assert.Equal(TaskItemStatus.Completed, decision.Status);
+        Assert.NotNull(decision.ClosedAt);
+        Assert.Contains("sqlite", decision.Tags);
+
+        await _client.PostAsJsonAsync($"api/v1/projects/{project.Id}/tasks", new CreateTaskRequest
+        {
+            Title = "Regular open task",
+            TaskHandle = "regular-task",
+            TaskType = "Task"
+        });
+
+        var filteredRes = await _client.GetAsync($"api/v1/projects/{project.Id}/tasks?taskType=Decision&tag=sqlite");
+        filteredRes.EnsureSuccessStatusCode();
+        var filteredPage = await filteredRes.Content.ReadFromJsonAsync<PaginatedResponse<TaskItemSummaryDto>>();
+        Assert.NotNull(filteredPage);
+        Assert.Single(filteredPage.Items);
+        Assert.Equal(decision.Id, filteredPage.Items[0].Id);
     }
 
     [Fact]

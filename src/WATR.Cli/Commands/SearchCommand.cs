@@ -34,6 +34,14 @@ public class SearchCommand : AsyncCommand<SearchCommand.Settings>
         [Description("Filter by task status")]
         public TaskItemStatus? Status { get; set; }
 
+        [CommandOption("--type <TYPE>")]
+        [Description("Filter by task type (e.g. Task, Epic, Bug, Decision)")]
+        public string? TaskType { get; set; }
+
+        [CommandOption("--tag <TAG>")]
+        [Description("Filter by tag")]
+        public string? Tag { get; set; }
+
         [CommandOption("-t|--top <N>")]
         [Description("Maximum number of results to return (default: 10)")]
         [DefaultValue(10)]
@@ -71,6 +79,14 @@ public class SearchCommand : AsyncCommand<SearchCommand.Settings>
         if (settings.Status.HasValue)
         {
             path += $"&status={settings.Status.Value}";
+        }
+        if (!string.IsNullOrWhiteSpace(settings.TaskType))
+        {
+            path += $"&taskType={Uri.EscapeDataString(settings.TaskType)}";
+        }
+        if (!string.IsNullOrWhiteSpace(settings.Tag))
+        {
+            path += $"&tag={Uri.EscapeDataString(settings.Tag)}";
         }
 
         var results = await _api.GetAsync<List<TaskSearchResultDto>>(path);

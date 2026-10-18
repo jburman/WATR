@@ -40,6 +40,12 @@ public class UpdateCommand : AsyncCommand<UpdateCommand.Settings>
         [CommandOption("--type <TYPE>")]
         public string? TaskType { get; set; }
 
+        [CommandOption("--tags <TAGS>")]
+        public string? Tags { get; set; }
+
+        [CommandOption("--superseded-by <HANDLE>")]
+        public string? SupersededByHandle { get; set; }
+
         [CommandOption("--json")]
         public bool Json { get; set; }
     }
@@ -56,6 +62,10 @@ public class UpdateCommand : AsyncCommand<UpdateCommand.Settings>
             }
         }
 
+        var tags = string.IsNullOrWhiteSpace(settings.Tags)
+            ? null
+            : settings.Tags.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToList();
+
         var request = new PatchTaskRequest
         {
             Title = settings.Title,
@@ -63,16 +73,17 @@ public class UpdateCommand : AsyncCommand<UpdateCommand.Settings>
             Status = settings.Status,
             Priority = settings.Priority,
             TaskHandle = settings.TaskHandle,
-            TaskType = settings.TaskType
+            TaskType = settings.TaskType,
+            Tags = tags,
+            SupersededByHandle = settings.SupersededByHandle
         };
 
         try
         {
-            await _api.PatchAsync($"api/v1/tasks/{settings.Id}", request);
+            var task = await _api.PatchAsync<TaskItemDto>($"api/v1/tasks/{settings.Id}", request);
 
             if (settings.Json)
             {
-                var task = await _api.GetAsync<TaskItemDto>($"api/v1/tasks/{settings.Id}");
                 var json = JsonSerializer.Serialize(task, AppJsonContext.Default.TaskItemDto);
                 AnsiConsole.Write(new Text(json));
             }

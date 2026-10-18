@@ -30,6 +30,7 @@ public class WatrMcpToolsTests
             "watr_search_tasks",
             "watr_get_task",
             "watr_create_task",
+            "watr_record_decision",
             "watr_update_task",
             "watr_claim_task",
             "watr_release_task",

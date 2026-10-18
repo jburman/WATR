@@ -1,20 +1,33 @@
 ---
-name: watr-manager
-description: Comprehensive guide for using WATR via MCP Tools or the CLI (watr) to manage projects, tasks, epics, and semantic search.
-version: 2.0.0
+name: watr
+description: >-
+  Use this skill whenever interacting with WATR (Where's All the Records)—a task
+  management and decision support system for AI coding agents—via the WATR MCP
+  server (watr_* tools) or the watr CLI. Activate when the user mentions WATR,
+  asks to check, claim, create, update, or complete tasks/epics/bugs, asks "why"
+  a system or architectural decision was made, wants to record or offload
+  architectural decisions, design rationale, or investigation findings out of
+  model context, or searches historical project records by meaning.
 ---
 
-# WATR Task Management
+# WATR Task Management & Decision Support Skill
 
-WATR provides two interfaces for AI coding agents:
-1. **Model Context Protocol (MCP) Server (`watr mcp`)**: Direct, structured tool calling without shell execution overhead or escaping hazards (Recommended).
-2. **CLI (`watr`)**: Interactive or scripted command-line operations with JSON support.
+**WATR** (Where's All the Records) is both a **task management** and **decision support system** with built-in semantic vector search.
+
+It serves two complementary roles for AI coding agents and their human supervisors:
+1. **Task Coordination:** Track epics, tasks, and bugs, claim work in progress, and prevent duplicate effort across agents.
+2. **Decision Support & Context Offloading:** Act as a persistent external knowledge store for architectural decisions, trade-offs, root-cause analyses, and the rationale behind *why* things are the way they are. Offloading this knowledge into WATR keeps the model's context window lean while allowing future sessions to look up historical context and "why" answers on demand via semantic search.
+
+Coding agents can interact with WATR through two interfaces:
+1. **MCP Server (`watr_*` tools) — Recommended:** Native, strongly-typed JSON tool calls via `watr mcp` with zero shell-escaping issues.
+2. **CLI (`watr`) — Fallback:** Command-line execution supporting `--json` output and `@file.md` inputs.
 
 ---
 
-## 1. Configuring WATR as an MCP Server
+## 1. Setup & Workspace Configuration
 
-When configuring WATR for Antigravity or any MCP-compatible coding agent, register `watr mcp` in your Antigravity MCP configuration (`~/.gemini/antigravity/mcp_config.json` or project-level `.gemini/settings.json`):
+### MCP Server Registration (`mcp_config.json`)
+If the `watr` MCP tools are not yet registered in the agent environment, configure `watr mcp` in `~/.gemini/antigravity/mcp_config.json` (or workspace `.agents/mcp_config.json`):
 
 ```json
 {
@@ -27,121 +40,135 @@ When configuring WATR for Antigravity or any MCP-compatible coding agent, regist
 }
 ```
 
-> **Note:** Ensure `watr` is initialized and logged in via `watr init <SERVER_URL>` and `watr login` before starting the MCP server.
+### Prerequisite Auth & Project Context
+- Both `watr` and `watr mcp` share credentials stored in `~/.watr/tokens.dat` and server config in `~/.watr/config.json`.
+- Project context is automatically resolved from `.watr/settings.json` in the workspace root.
+- If `watr_status` or `watr status` reports an unauthenticated user or missing server URL, run:
+  ```bash
+  watr init <SERVER_URL>
+  watr login
+  ```
+- If no active project is linked to the workspace, link one using `watr_set_project` (MCP) or `watr project set <NAME>` (CLI). Once linked in `.watr/settings.json`, omit the `project` parameter on subsequent calls.
 
 ---
 
-## 2. MCP Tool Suite Reference
+## 2. Standard Agent Workflow
 
-When the WATR MCP server is active, prefer calling these tools directly:
+Follow this lifecycle when working on tasks or investigating architectural questions in a WATR-enabled repository:
 
-| Tool Name | Type | Description | Key Parameters |
+1. **Check Context & Search Prior Decisions First:**
+   - Call `watr_status` to confirm the active project.
+   - Before creating new tasks, changing architecture, or answering questions about *why* something works a certain way, run `watr_search_tasks` (optionally filtering with `taskType: "Decision"` or `tag: "<area>"`) and `watr_list_tasks` to retrieve prior architectural decisions, design rationale, related bugs, and historical context.
+   - Check `supersededByHandle` (or `[Superseded by ...]` in `matchedPreview`) to ensure you are following the active decision rather than an outdated one.
+2. **Claim Before Coding:**
+   - Call `watr_get_task` (`idOrHandle`) to read the full Markdown `body` (requirements, context, acceptance criteria), `tags`, and existing `notes` (prior decisions and activity).
+   - Call `watr_claim_task` (`idOrHandle`) to assign the task to yourself and transition its status to `InProgress` so other agents do not duplicate the work.
+3. **Maintain the Plan & Context in the Task Body:**
+   - Use `watr_update_task` to keep the task `body` updated with the **Definition of Done**, architectural context, implementation plan, or sub-task checklist.
+4. **Offload Decisions, Findings & Progress:**
+   - **Standalone Architectural Decisions (ADRs):** Call `watr_record_decision` (`title`, `handle`, `rationale`, `tags`, `supersedesHandle`) to record architectural or design decisions (`TaskType = "Decision"`, `Status = "Completed"`) in a single call. If this decision replaces an older decision, pass `supersedesHandle` so the older record is automatically marked with `SupersededByHandle`.
+   - **Task-Specific Findings:** Use `watr_add_note` to offload key implementation trade-offs ("why Option A was chosen over Option B"), root-cause findings, and milestones on an active task so they do not need to remain solely in the model's conversation context.
+   - If blocked on external input, set `status: "Blocked"` via `watr_update_task` and explain why in a note.
+5. **Verify & Complete:**
+   - Run builds and tests to verify your changes.
+   - Complete the task using `watr_complete_task` with a `verificationNote` summarizing the final implementation, key decisions made, and how it was verified.
+
+---
+
+## 3. Golden Rule: Task Body vs. Task Notes
+
+Keep the distinction between **Body** and **Notes** clean for human supervisors and future agent lookups:
+
+| Field | Purpose | What Belongs Here | How to Update |
 | :--- | :--- | :--- | :--- |
-| `watr_status` | Read | Get server URL, authenticated user, and active project context | None |
-| `watr_list_projects` | Read | List all accessible projects | `page`, `pageSize` |
-| `watr_create_project` | Write | Create a new project | `name`, `description` |
-| `watr_set_project` | Write | Set active project in local `.watr/settings.json` or global config | `name`, `global` (bool) |
-| `watr_list_tasks` | Read | List tasks with filtering | `project`, `status`, `priority`, `assignedTo`, `page`, `pageSize` |
-| `watr_search_tasks` | Read | **Semantic vector search** across task titles, bodies, and notes | `query`, `project`, `status`, `top`, `minScore` |
-| `watr_get_task` | Read | Get full task details including markdown body and notes | `identifier` (UUID or handle), `project` |
-| `watr_create_task` | Write | Create a new task or epic | `title`, `project`, `body`, `handle`, `taskType`, `priority` |
-| `watr_update_task` | Write | Update task properties | `id`, `title`, `body`, `status`, `priority`, `handle`, `taskType` |
-| `watr_claim_task` | Write | Assign task to authenticated user | `id` |
-| `watr_release_task` | Write | Release assigned task back to pool | `id` |
-| `watr_complete_task` | Write | Mark task status as Done | `id` |
-| `watr_add_note` | Write | Add markdown note to task activity log | `id`, `content` |
+| **`body`** | **Definition of Done, Plan & Design Context** | Problem statement, architectural context/rationale, requirements, acceptance criteria, implementation checklist, and (for Epics) links to child task handles. | `watr_update_task` or `watr_record_decision` / `watr update <ID> --body @file.md` |
+| **`notes`** | **Chronological Activity & Decision Log** | Progress updates, architectural decisions & trade-offs discovered during implementation, root-cause findings, roadblocks, and final verification / test logs. | `watr_add_note` or `watr_complete_task` / `watr note <ID> ...` |
+
+- **Task Handles:** When creating a task or decision record (`watr_create_task`, `watr_record_decision`, or `watr add`), always provide a concise, lowercase kebab-case `handle` slug (e.g., `login-fix`, `adr-sqlite-vectors`). The server automatically prefixes it with the project's incremental task number (e.g., `42-login-fix`).
+- **Tags:** Attach comma-separated domain/component `tags` (e.g., `"auth,sqlite,security"`) so future searches and lists can filter by subsystem.
+- **Epics:** Create Epics with `taskType: "Epic"` and list child task handles in the Epic's `body`:
+  ```markdown
+  ## Sub-tasks
+  - [ ] `42-auth-models` — Add refresh token entity
+  - [ ] `43-auth-endpoint` — Implement `/api/auth/revoke`
+  ```
+- **Standalone Decision / Knowledge Records:** Use `watr_record_decision` (or `watr add --type Decision`) to offload architectural decisions, "why" rationale, and system invariants. Records with `taskType: "Decision"` automatically default to `Completed` status so they do not clutter the open work queue while remaining prioritized in semantic searches (`watr_search_tasks` with `taskType: "Decision"`).
 
 ---
 
-## 3. Semantic Vector Search
+## 4. MCP Tools Reference (`watr mcp`)
 
-WATR features local, CPU-based semantic vector embeddings (`all-MiniLM-L6-v2`) generated asynchronously in the background for all task titles, descriptions, and notes.
+Always prefer calling MCP tools when the `watr` MCP server is connected. All task tools accept **either a task GUID or a task handle** (e.g., `"42-login-fix"`) in `idOrHandle`.
 
-### Using MCP:
-```json
-// Tool Call: watr_search_tasks
-{
-  "query": "fix memory leak in background worker",
-  "minScore": 0.25,
-  "top": 5
-}
-```
+| Tool Name | Parameters (`*` = required) | Description |
+| :--- | :--- | :--- |
+| `watr_status` | *(none)* | Returns `serverUrl`, `userDisplayName`, `userEmail`, and `activeProject`. |
+| `watr_list_projects` | `page?` (1), `pageSize?` (50) | Lists all projects accessible to the authenticated user. |
+| `watr_create_project` | `name*`, `description?` | Creates a new project (with default types `Epic`, `Task`, `Bug`, `Decision`) and binds it to `.watr/settings.json`. |
+| `watr_set_project` | `project*` | Links the current workspace directory (`.watr/settings.json`) to `project`. |
+| `watr_list_tasks` | `project?`, `status?`, `priority?`, `taskType?`, `tag?`, `assignedTo?`, `page?`, `pageSize?` | Lists tasks or decisions. Filter `status` (`Open`, `InProgress`, `Completed`, `Blocked`, `Cancelled`), `priority` (`None`, `Low`, `Medium`, `High`, `Critical`), `taskType` (`Decision`, `Epic`, `Task`, `Bug`), `tag`, or `assignedTo` (`"me"`). |
+| `watr_search_tasks` | `query*`, `project?`, `status?`, `taskType?`, `tag?`, `top?` (10), `minScore?` (0.25) | **Semantic Vector Search:** Searches task titles, bodies, tags, and notes by natural-language meaning (using multi-chunk sliding-window embeddings), returning ranked results with `similarityScore` and context-aware `matchedPreview`. |
+| `watr_get_task` | `idOrHandle*`, `project?` | Gets full task/decision details including Markdown `body`, `tags`, `supersededByHandle`, and chronological `notes`. |
+| `watr_create_task` | `title*`, `handle*`, `body?`, `priority?`, `taskType?`, `status?`, `tags?`, `supersededByHandle?`, `project?` | Creates a new task (`Task`, `Bug`, `Epic`, `Decision`). Supports raw multi-line Markdown in `body`. Defaults `status` to `Completed` when `taskType` is `Decision`. |
+| `watr_record_decision` | `title*`, `handle*`, `rationale*`, `tags?`, `supersedesHandle?`, `project?` | **Single-Call Decision Offloading:** Records an architectural or design decision (`TaskType = "Decision"`, `Status = "Completed"`) and optionally marks `supersedesHandle` as superseded by this new decision. |
+| `watr_update_task` | `idOrHandle*`, `title?`, `body?`, `status?`, `priority?`, `handle?`, `taskType?`, `tags?`, `supersededByHandle?`, `project?` | Partially updates any specified fields on an existing task or decision in a single round-trip. |
+| `watr_claim_task` | `idOrHandle*`, `project?` | Assigns the task to the current user and sets status to `InProgress`. |
+| `watr_release_task` | `idOrHandle*`, `project?` | Unassigns the task and reverts status to `Open`. |
+| `watr_complete_task` | `idOrHandle*`, `verificationNote?`, `project?` | Appends `verificationNote` (if provided) and marks the task `Completed`. |
+| `watr_add_note` | `idOrHandle*`, `content*`, `project?` | Appends a Markdown note to the task's activity log. |
 
-### Using CLI:
-```bash
-watr search "fix memory leak in background worker" --min-score 0.25 --top 5
-# With JSON output
-watr search "database connection timeouts" --json
-```
-
-Use semantic search when investigating related tasks, existing bugs, or prior work where exact keywords may vary.
+### Valid Enum Values
+- **`status`:** `Open`, `InProgress`, `Completed`, `Blocked`, `Cancelled`
+- **`priority`:** `None`, `Low`, `Medium`, `High`, `Critical`
+- **Default `taskType` values:** `Epic`, `Task`, `Bug`, `Decision`
 
 ---
 
-## 4. CLI Workflow & Commands
+## 5. CLI Fallback Reference (`watr`)
 
-If using the CLI directly:
+If the MCP server is unavailable in your environment, invoke the `watr` CLI directly. Use `--json` on read/update commands for machine-parseable output, and use `@file.md` when passing multi-line Markdown to `--body` or `watr note` to avoid shell-escaping issues.
 
-### Initial Setup
+> **Important CLI Note:** While MCP tools accept both GUIDs and handles via `idOrHandle`, the CLI mutation/detail commands (`show`, `update`, `claim`, `done`, `note`) require the task's **GUID (`<ID>`)**. Obtain the GUID from `watr list --json`, `watr search <QUERY> --json`, or the output of `watr add`.
+
 ```bash
-watr init https://watr.example.com
-watr login
-watr project create "MyProject" --description "Project description"
-watr project set "MyProject"
-```
+# Check authentication and active workspace project
+watr status
 
-### Managing Tasks
-```bash
-# List tasks
+# Project management
+watr project list
+watr project create "<NAME>" --description "<TEXT>"
+watr project set "<NAME>"
+
+# List & semantic search (filter by --type Decision or --tag <tag>, use --json for structured parsing)
 watr list --status Open --json
+watr list --type Decision --tag auth --json
+watr search "why did we choose SQLite over Postgres" --type Decision --top 5 --json
+watr search "token expiration race condition" --top 5 --min-score 0.25 --json
 
-# Semantic search
-watr search "database connection timeout"
+# Inspect full task details (body + tags + notes) by GUID
+watr show <TASK_GUID> --json
 
-# Create standard task
-watr add "Implement OAuth flow" --handle "oauth-ui" --type Task --priority High
+# Create a task or decision (--handle is required; Decision defaults to Completed status)
+watr add "Fix login race condition" --handle "login-race" --type Bug --priority High --tags "auth,concurrency" --body @plan.md
+watr add "Use SQLite BLOBs with SIMD for vector search" --handle "adr-sqlite-vectors" --type Decision --tags "search,sqlite" --body @adr.md
 
-# Create epic
-watr add "Security & Authentication" --handle "sec-epic" --type Epic --priority Critical
+# Claim a task
+watr claim <TASK_GUID>
 
-# Inspect task
-watr get <ID-or-Handle> --json
+# Update task fields (title, body, status, priority, handle, type, tags, superseded-by)
+watr update <TASK_GUID> --status InProgress --tags "auth,jwt" --body @updated-plan.md --json
 
-# Claim task
-watr claim <ID>
+# Add a progress or verification note (inline or via @file.md)
+watr note <TASK_GUID> "Verified fix with dotnet test (all 21 tests passing)."
 
-# Update body (Definition of Done)
-watr update <ID> --body @plan.md
-
-# Update status
-watr update <ID> --status InProgress
-
-# Add progress note
-watr note <ID> "Implemented PKCE code verifier and challenge."
-
-# Complete task
-watr note <ID> "✅ Verified with unit and integration tests."
-watr done <ID>
+# Mark task as Completed
+watr done <TASK_GUID>
 ```
 
----
+### CLI Exit Codes
+- `0` — Success
+- `1` — General error (invalid arguments or server error)
+- `2` — Authentication failure (run `watr login`)
+- `3` — Not found (project or task GUID does not exist)
+- `4` — Conflict (e.g., failed to claim task)
 
-## 5. Body vs. Notes: The Golden Rule
-
-* **BODY:** The **Definition of Done**. Requirements, acceptance criteria, implementation plans, and checklists. Update via `watr_update_task` (MCP) or `watr update <ID> --body ...` (CLI).
-* **NOTES:** The **Activity Log**. Progress updates, roadblocks, decision records, and verification results. Add via `watr_add_note` (MCP) or `watr note <ID> ...` (CLI).
-
-❌ **BAD:** Putting implementation plans or architecture requirements in a Note.  
-✅ **GOOD:** Putting implementation plans in the Task Body, and progress / completion verification in Notes.
-
----
-
-## 6. Agent Best Practices
-
-1. **Prefer MCP Tools:** Use MCP tools (`watr_*`) whenever available. They provide native JSON arguments, typed responses, and eliminate escaping risks with multi-line Markdown.
-2. **Handle Context:** Use friendly handles (`login-auth`, `db-pooling`) for key tasks. The server automatically prefixes handles with the task number (e.g. `12-login-auth`).
-3. **Semantic Querying:** Before creating duplicate work or searching for existing bugs, run `watr_search_tasks` / `watr search`.
-4. **Error Handling:**
-   - Auth errors: Run `watr login` (CLI).
-   - Project unconfigured: Run `watr_set_project` (MCP) or `watr project set` (CLI).
-   - Task claimed by another user: Check assignee before modifying.
