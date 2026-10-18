@@ -1,6 +1,14 @@
-# WATR (Where's All the Records)
+<p align="center">
+  <img src="src/WATR.Web/wwwroot/watr_logo.png" alt="WATR Logo" width="160" />
+</p>
 
-**WATR** is a **task management and decision support system** purpose-built for **AI coding agents** and their **human supervisors**.
+<h1 align="center">WATR (Where's All the Records)</h1>
+
+<p align="center">
+  <strong>A task management and decision support system purpose-built for AI coding agents and human supervisors.</strong>
+</p>
+
+---
 
 Beyond tracking and coordinating active work, WATR serves as a persistent **knowledge store and external memory** for a project—capturing architectural decisions, trade-offs, root-cause investigations, and the rationale behind *why* things are the way they are. Instead of keeping all historical project context inside a model's finite context window, agents can **offload project knowledge into WATR** and retrieve it on demand via semantic vector search, making long-term progress more efficient and answering questions about system history effortless.
 
