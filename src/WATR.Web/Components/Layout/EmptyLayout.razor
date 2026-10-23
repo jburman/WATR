@@ -1,10 +1,12 @@
 @inherits LayoutComponentBase
 @using Radzen.Blazor
+@using WATR.Web.Services
 
 <RadzenComponents />
 
 <div class="empty-layout">
     @Body
+    <div class="empty-layout-version">WATR @AppVersionInfo.DisplayVersion</div>
 </div>
 
 <style>
@@ -14,5 +16,18 @@
         margin: 0;
         padding: 0;
         overflow: hidden;
+        position: relative;
+    }
+
+    .empty-layout-version {
+        position: fixed;
+        bottom: 0.5rem;
+        left: 0;
+        right: 0;
+        text-align: center;
+        font-size: 0.75rem;
+        color: rgba(255, 255, 255, 0.45);
+        pointer-events: none;
+        z-index: 100;
     }
 </style>

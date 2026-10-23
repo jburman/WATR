@@ -10,7 +10,7 @@
 
 <RadzenComponents />
 
-<RadzenLayout Style="grid-template-areas: 'rz-header' 'rz-body'; grid-template-columns: 1fr; grid-template-rows: auto 1fr;">
+<RadzenLayout Style="grid-template-areas: 'rz-header' 'rz-body' 'rz-footer'; grid-template-columns: 1fr; grid-template-rows: auto 1fr auto;">
     <RadzenHeader>
         <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" JustifyContent="JustifyContent.SpaceBetween" Gap="1rem" class="rz-p-2 w-100">
             <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="1rem">
@@ -53,6 +53,9 @@
             @Body
         </div>
     </RadzenBody>
+    <RadzenFooter class="rz-py-1 rz-px-4" Style="text-align: center; font-size: 0.75rem; opacity: 0.65;">
+        WATR @AppVersionInfo.DisplayVersion
+    </RadzenFooter>
 </RadzenLayout>
 
 @code {

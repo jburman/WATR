@@ -24,10 +24,10 @@ jobs:
           dotnet-version: '10.x'
 
       - name: Build with dotnet
-        run: dotnet build src/WATR.Web/WATR.Web.csproj --configuration Release
+        run: dotnet build src/WATR.Web/WATR.Web.csproj --configuration Release -p:Version=1.0.${{ github.run_number }}
 
       - name: dotnet publish
-        run: dotnet publish src/WATR.Web/WATR.Web.csproj -c Release -o ./publish/web --no-build
+        run: dotnet publish src/WATR.Web/WATR.Web.csproj -c Release -o ./publish/web --no-build -p:Version=1.0.${{ github.run_number }}
 
       - name: Ensure App_Data is excluded from publish artifact
         run: rm -rf ./publish/web/App_Data

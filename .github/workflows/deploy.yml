@@ -13,8 +13,8 @@ jobs:
         with:
           dotnet-version: '10.0.x'
       - run: dotnet restore
-      - run: dotnet build --no-restore --configuration Release
-      - run: dotnet publish src/WATR.Web -c Release -o ./publish/web
+      - run: dotnet build --no-restore --configuration Release -p:Version=1.0.${{ github.run_number }}
+      - run: dotnet publish src/WATR.Web -c Release -o ./publish/web -p:Version=1.0.${{ github.run_number }}
       - run: rm -rf ./publish/web/App_Data
       - uses: actions/upload-artifact@v4
         with:
