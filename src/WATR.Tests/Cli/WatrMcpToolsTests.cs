@@ -29,10 +29,14 @@ public class WatrMcpToolsTests
             "watr_set_project",
             "watr_list_tasks",
             "watr_search_tasks",
+            "watr_list_decisions",
+            "watr_search_decisions",
+            "watr_get_decision",
             "watr_get_task",
             "watr_create_task",
             "watr_record_decision",
             "watr_obsolete_decision",
+            "watr_update_decision",
             "watr_update_task",
             "watr_claim_task",
             "watr_release_task",
@@ -112,6 +116,110 @@ public class WatrMcpToolsTests
             Assert.Equal("test@watr.local", status.UserEmail);
             Assert.Equal("MyProject", status.ActiveProject);
             Assert.Equal("MyProject", status.DefaultProject);
+        }
+        finally
+        {
+            if (Directory.Exists(tempDir))
+            {
+                try { Directory.Delete(tempDir, true); } catch { }
+            }
+        }
+    }
+
+    [Fact]
+    public async Task DecisionTools_ShouldUseDecisionTaskTypeAndEndpoints()
+    {
+        var tempDir = Path.Combine(Path.GetTempPath(), "watr_decision_tools_test_" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempDir);
+        var configFile = Path.Combine(tempDir, "config.json");
+        var projectId = Guid.Parse("11111111-1111-1111-1111-111111111111");
+        var decisionId = Guid.Parse("22222222-2222-2222-2222-222222222222");
+        var capturedRequests = new List<(HttpMethod Method, string PathAndQuery, string? Body)>();
+
+        try
+        {
+            var config = new ConfigService(configFile);
+            config.Save(new ConfigData { ServerUrl = "http://localhost:5000", DefaultProject = "MyProject" });
+
+            var mockHandler = new HttpMessageHandlerMock(req =>
+            {
+                var pathAndQuery = req.RequestUri?.PathAndQuery ?? string.Empty;
+                var body = req.Content?.ReadAsStringAsync().GetAwaiter().GetResult();
+                capturedRequests.Add((req.Method, pathAndQuery, body));
+
+                if (pathAndQuery == "/api/v1/projects")
+                {
+                    return new HttpResponseMessage(System.Net.HttpStatusCode.OK)
+                    {
+                        Content = new StringContent(
+                            $$"""{"items":[{"id":"{{projectId}}","name":"MyProject","description":"","taskTypes":["Task","Decision"],"createdAt":"2026-10-16T00:00:00Z"}],"page":1,"pageSize":50,"totalCount":1}""",
+                            System.Text.Encoding.UTF8,
+                            "application/json")
+                    };
+                }
+
+                if (pathAndQuery.StartsWith($"/api/v1/projects/{projectId}/tasks/search", StringComparison.Ordinal))
+                {
+                    return new HttpResponseMessage(System.Net.HttpStatusCode.OK)
+                    {
+                        Content = new StringContent(
+                            $$"""[{"task":{"id":"{{decisionId}}","taskNumber":1,"taskHandle":"1-adr-sqlite","taskType":"Decision","title":"Use SQLite","status":2,"priority":2,"updatedAt":"2026-10-16T00:00:00Z","tags":["sqlite"],"supersedesHandles":[]},"similarityScore":0.92,"matchedPreview":"Use SQLite"}]""",
+                            System.Text.Encoding.UTF8,
+                            "application/json")
+                    };
+                }
+
+                if (pathAndQuery.StartsWith($"/api/v1/projects/{projectId}/tasks/handle/", StringComparison.Ordinal) ||
+                    pathAndQuery == $"/api/v1/tasks/{decisionId}")
+                {
+                    return new HttpResponseMessage(System.Net.HttpStatusCode.OK)
+                    {
+                        Content = new StringContent(
+                            $$"""{"id":"{{decisionId}}","projectId":"{{projectId}}","taskNumber":1,"taskHandle":"1-adr-sqlite","taskType":"Decision","title":"Use SQLite","body":"Rationale","status":2,"priority":2,"createdAt":"2026-10-16T00:00:00Z","updatedAt":"2026-10-16T00:00:00Z","tags":["sqlite"],"supersedesHandles":[],"notes":[]}""",
+                            System.Text.Encoding.UTF8,
+                            "application/json")
+                    };
+                }
+
+                if (pathAndQuery.StartsWith($"/api/v1/projects/{projectId}/tasks", StringComparison.Ordinal))
+                {
+                    return new HttpResponseMessage(System.Net.HttpStatusCode.OK)
+                    {
+                        Content = new StringContent(
+                            $$"""{"items":[{"id":"{{decisionId}}","taskNumber":1,"taskHandle":"1-adr-sqlite","taskType":"Decision","title":"Use SQLite","status":2,"priority":2,"updatedAt":"2026-10-16T00:00:00Z","tags":["sqlite"],"supersedesHandles":[]}],"page":1,"pageSize":50,"totalCount":1}""",
+                            System.Text.Encoding.UTF8,
+                            "application/json")
+                    };
+                }
+
+                return new HttpResponseMessage(System.Net.HttpStatusCode.NotFound);
+            });
+
+            var httpClient = new HttpClient(mockHandler) { BaseAddress = new Uri("http://localhost:5000/") };
+            var api = new ApiClient(config, new TokenStore(), httpClient);
+            var projectContext = new ProjectContextHelper(config, api);
+            var mcpTools = new WatrMcpTools(api, config, projectContext);
+
+            var listedDecisions = await mcpTools.ListDecisionsAsync(status: "Completed", tag: "sqlite");
+            Assert.Single(listedDecisions);
+            Assert.Contains(capturedRequests, r => r.Method == HttpMethod.Get && r.PathAndQuery.Contains("taskType=Decision") && r.PathAndQuery.Contains("status=Completed") && r.PathAndQuery.Contains("tag=sqlite"));
+
+            var searchedDecisions = await mcpTools.SearchDecisionsAsync("why sqlite", status: "Completed", tag: "sqlite");
+            Assert.Single(searchedDecisions);
+            Assert.Contains(capturedRequests, r => r.Method == HttpMethod.Get && r.PathAndQuery.Contains("/tasks/search?") && r.PathAndQuery.Contains("taskType=Decision"));
+
+            var fetchedDecision = await mcpTools.GetDecisionAsync("1-adr-sqlite");
+            Assert.Equal(decisionId, fetchedDecision.Id);
+
+            var updatedDecision = await mcpTools.UpdateDecisionAsync("1-adr-sqlite", title: "Use SQLite Vectors", body: "Updated rationale", tags: "sqlite,vector");
+            Assert.Equal(decisionId, updatedDecision.Id);
+            Assert.Contains(capturedRequests, r => r.Method == HttpMethod.Patch && r.PathAndQuery == $"/api/v1/tasks/{decisionId}" && r.Body != null && r.Body.Contains("\"taskType\":\"Decision\""));
+
+            await mcpTools.ListTasksAsync();
+            Assert.Contains(capturedRequests, r => r.Method == HttpMethod.Get && r.PathAndQuery.Contains("taskType=%21Decision"));
+
+            await mcpTools.SearchTasksAsync("find tasks");
+            Assert.Contains(capturedRequests, r => r.Method == HttpMethod.Get && r.PathAndQuery.Contains("/tasks/search?") && r.PathAndQuery.Contains("taskType=%21Decision"));
         }
         finally
         {

@@ -58,7 +58,7 @@ Follow this lifecycle when working on tasks or investigating architectural quest
 
 1. **Check Context & Search Prior Decisions First:**
    - Call `watr_status` to confirm the active project.
-   - Before creating new tasks, changing architecture, or answering questions about *why* something works a certain way, run `watr_search_tasks` (optionally filtering with `taskType: "Decision"` or `tag: "<area>"`) and `watr_list_tasks` to retrieve prior architectural decisions, design rationale, related bugs, and historical context.
+   - Before creating new tasks, changing architecture, or answering questions about *why* something works a certain way, run `watr_search_decisions` (and `watr_list_decisions`) to retrieve prior architectural decisions and design rationale, plus `watr_search_tasks` and `watr_list_tasks` for related tasks and bugs.
    - Check `status == "Obsolete"` and `supersededByHandle` (or `[Obsolete]` / `[Superseded by ...]` in `matchedPreview`) to ensure you are following the active decision rather than an obsolete or superseded one.
 2. **Claim Before Coding:**
    - Call `watr_get_task` (`idOrHandle`) to read the full Markdown `body` (requirements, context, acceptance criteria), `tags`, and existing `notes` (prior decisions and activity).
@@ -66,7 +66,7 @@ Follow this lifecycle when working on tasks or investigating architectural quest
 3. **Maintain the Plan & Context in the Task Body:**
    - Use `watr_update_task` to keep the task `body` updated with the **Definition of Done**, architectural context, implementation plan, or sub-task checklist.
 4. **Offload Decisions, Findings & Progress:**
-   - **Standalone Architectural Decisions (ADRs):** Call `watr_record_decision` (`title`, `handle`, `rationale`, `tags`, `supersedesHandle`) to record architectural or design decisions (`TaskType = "Decision"`, `Status = "Completed"`) in a single call. If this decision replaces one or more older decisions, pass comma-separated handles/IDs in `supersedesHandle` so the older records are automatically marked `Obsolete` with `SupersededByHandle` pointing to the new decision. You can also mark an existing decision obsolete at any time via `watr_obsolete_decision`.
+   - **Standalone Architectural Decisions (ADRs):** Call `watr_record_decision` (`title`, `handle`, `body`, `tags`, `supersedesHandle`) to record architectural or design decisions (`TaskType = "Decision"`, `Status = "Completed"`) in a single call. If this decision replaces one or more older decisions, pass comma-separated handles/IDs in `supersedesHandle` so the older records are automatically marked `Obsolete` with `SupersededByHandle` pointing to the new decision. Use `watr_update_decision` to update an existing decision and `watr_obsolete_decision` to mark a decision obsolete.
    - **Task-Specific Findings:** Use `watr_add_note` to offload key implementation trade-offs ("why Option A was chosen over Option B"), root-cause findings, and milestones on an active task so they do not need to remain solely in the model's conversation context.
    - If blocked on external input, set `status: "Blocked"` via `watr_update_task` and explain why in a note.
 5. **Verify & Complete:**
@@ -81,7 +81,7 @@ Keep the distinction between **Body** and **Notes** clean for human supervisors 
 
 | Field | Purpose | What Belongs Here | How to Update |
 | :--- | :--- | :--- | :--- |
-| **`body`** | **Definition of Done, Plan & Design Context** | Problem statement, architectural context/rationale, requirements, acceptance criteria, implementation checklist, and (for Epics) links to child task handles. | `watr_update_task` or `watr_record_decision` / `watr update <ID> --body @file.md` |
+| **`body`** | **Definition of Done, Plan & Design Context** | Problem statement, architectural context/rationale, requirements, acceptance criteria, implementation checklist, and (for Epics) links to child task handles. | `watr_update_task`, `watr_update_decision`, or `watr_record_decision` / `watr update <ID> --body @file.md` |
 | **`notes`** | **Chronological Activity & Decision Log** | Progress updates, architectural decisions & trade-offs discovered during implementation, root-cause findings, roadblocks, and final verification / test logs. | `watr_add_note` or `watr_complete_task` / `watr note <ID> ...` |
 
 - **Built-in Types & Sub-Types:** Every project always has `Task` and `Decision` types built in, and projects can configure additional custom `Task` sub-types (e.g., `Epic`, `Bug`, `Story`) via `watr_create_project` or `watr_update_project`.
@@ -93,13 +93,13 @@ Keep the distinction between **Body** and **Notes** clean for human supervisors 
   - [ ] `42-auth-models` — Add refresh token entity
   - [ ] `43-auth-endpoint` — Implement `/api/auth/revoke`
   ```
-- **Standalone Decision / Knowledge Records:** Use `watr_record_decision` (or `watr add --type Decision`) to offload architectural decisions, "why" rationale, and system invariants. Records with `taskType: "Decision"` automatically default to `Completed` status so they do not clutter the open work queue while remaining prioritized in semantic searches (`watr_search_tasks` with `taskType: "Decision"`). When superseded or retired, decisions transition to `Obsolete` status (`Status = "Obsolete"`).
+- **Standalone Decision / Knowledge Records:** Use `watr_record_decision` (or `watr add --type Decision`) to offload architectural decisions, "why" rationale, and system invariants. Records with `taskType: "Decision"` automatically default to `Completed` status so they do not clutter the open work queue while remaining prioritized in semantic searches (`watr_search_decisions`). Use `watr_get_decision`, `watr_list_decisions`, `watr_update_decision`, and `watr_obsolete_decision` to manage decisions directly. When superseded or retired, decisions transition to `Obsolete` status (`Status = "Obsolete"`).
 
 ---
 
 ## 4. MCP Tools Reference (`watr mcp`)
 
-Always prefer calling MCP tools when the `watr` MCP server is connected. All task tools accept **either a task GUID or a task handle** (e.g., `"42-login-fix"`) in `idOrHandle`.
+Always prefer calling MCP tools when the `watr` MCP server is connected. All task and decision tools accept **either a GUID or a handle** (e.g., `"42-login-fix"`, `"12-adr-sqlite-vectors"`) in `idOrHandle`.
 
 | Tool Name | Parameters (`*` = required) | Description |
 | :--- | :--- | :--- |
@@ -108,17 +108,21 @@ Always prefer calling MCP tools when the `watr` MCP server is connected. All tas
 | `watr_create_project` | `name*`, `description?`, `taskTypes?` | Creates a new project (`Task` and `Decision` are always included, plus any comma-separated custom `taskTypes` such as `"Epic,Bug"`) and binds it to `.watr/settings.json`. |
 | `watr_update_project` | `name?`, `description?`, `taskTypes?`, `project?` | Updates a project's name, description, or custom task sub-types (`Task` and `Decision` are always preserved). |
 | `watr_set_project` | `project*` | Links the current workspace directory (`.watr/settings.json`) to `project`. |
-| `watr_list_tasks` | `project?`, `status?`, `priority?`, `taskType?`, `tag?`, `assignedTo?`, `page?`, `pageSize?` | Lists tasks or decisions. Filter `status` (`Open`, `InProgress`, `Completed`, `Blocked`, `Cancelled`, `Obsolete`), `priority` (`None`, `Low`, `Medium`, `High`, `Critical`), `taskType` (`Decision`, `!Decision`, `Task`, `Epic`, `Bug`), `tag`, or `assignedTo` (`"me"`). |
-| `watr_search_tasks` | `query*`, `project?`, `status?`, `taskType?`, `tag?`, `top?` (10), `minScore?` (0.25) | **Semantic Vector Search:** Searches task titles, bodies, tags, and notes by natural-language meaning (using multi-chunk sliding-window embeddings), returning ranked results with `similarityScore` and context-aware `matchedPreview`. |
-| `watr_get_task` | `idOrHandle*`, `project?` | Gets full task/decision details including Markdown `body`, `tags`, `supersededByHandle`, `supersedesHandles`, and chronological `notes`. |
-| `watr_create_task` | `title*`, `handle*`, `body?`, `priority?`, `taskType?`, `status?`, `tags?`, `supersededByHandle?`, `supersedesHandles?`, `project?` | Creates a new task (`Task`, `Bug`, `Epic`, `Decision`). Supports raw multi-line Markdown in `body` and optional comma-separated `supersedesHandles` (which marks referenced items `Obsolete` and sets their `SupersededByHandle`). |
-| `watr_record_decision` | `title*`, `handle*`, `rationale*`, `tags?`, `supersedesHandle?`, `project?` | **Single-Call Decision Offloading:** Records an architectural or design decision (`TaskType = "Decision"`, `Status = "Completed"`) and optionally accepts one or more comma-separated handles/IDs in `supersedesHandle` to automatically mark those previous decisions `Obsolete` with `SupersededByHandle` pointing to the new decision. |
-| `watr_obsolete_decision` | `idOrHandle*`, `supersededByHandle?`, `project?` | Marks an existing decision (or task) as `Obsolete` (`Status = "Obsolete"`) and optionally sets `supersededByHandle` to the newer decision that replaced it. |
-| `watr_update_task` | `idOrHandle*`, `title?`, `body?`, `status?`, `priority?`, `handle?`, `taskType?`, `tags?`, `supersededByHandle?`, `supersedesHandles?`, `project?` | Partially updates any specified fields on an existing task or decision in a single round-trip. |
+| `watr_list_tasks` | `project?`, `status?`, `priority?`, `taskType?`, `tag?`, `assignedTo?`, `page?`, `pageSize?` | Lists tasks (defaults `taskType` to `!Decision`). Filter `status` (`Open`, `InProgress`, `Completed`, `Blocked`, `Cancelled`, `Obsolete`), `priority` (`None`, `Low`, `Medium`, `High`, `Critical`), `taskType` (`Task`, `Epic`, `Bug`), `tag`, or `assignedTo` (`"me"`). |
+| `watr_search_tasks` | `query*`, `project?`, `status?`, `taskType?`, `tag?`, `top?` (10), `minScore?` (0.25) | **Semantic Vector Search (Tasks):** Searches non-decision task titles, bodies, tags, and notes by natural-language meaning, returning ranked results with `similarityScore` and context-aware `matchedPreview`. |
+| `watr_list_decisions` | `project?`, `status?`, `tag?`, `page?`, `pageSize?` | Lists architectural decision records (`TaskType = "Decision"`). Filter by `status` (`Completed`, `Obsolete`) or `tag`. |
+| `watr_search_decisions` | `query*`, `project?`, `status?`, `tag?`, `top?` (10), `minScore?` (0.25) | **Semantic Vector Search (Decisions):** Searches architectural decisions (`TaskType = "Decision"`), rationale, tags, and notes by natural-language meaning. |
+| `watr_get_decision` | `idOrHandle*`, `project?` | Gets full decision details including Markdown `body`, `tags`, `supersededByHandle`, `supersedesHandles`, and chronological `notes`. |
+| `watr_get_task` | `idOrHandle*`, `project?` | Gets full task details including Markdown `body`, `tags`, `supersededByHandle`, `supersedesHandles`, and chronological `notes`. |
+| `watr_create_task` | `title*`, `handle*`, `body?`, `priority?`, `taskType?`, `status?`, `tags?`, `supersededByHandle?`, `supersedesHandles?`, `project?` | Creates a new task (`Task`, `Bug`, `Epic`). Supports raw multi-line Markdown in `body`. |
+| `watr_record_decision` | `title*`, `handle*`, `body*`, `tags?`, `supersedesHandle?`, `project?` | **Single-Call Decision Offloading:** Records an architectural or design decision (`TaskType = "Decision"`, `Status = "Completed"`) and optionally accepts one or more comma-separated handles/IDs in `supersedesHandle` to automatically mark those previous decisions `Obsolete` with `SupersededByHandle` pointing to the new decision. |
+| `watr_update_decision` | `idOrHandle*`, `title?`, `body?`, `status?`, `handle?`, `tags?`, `supersededByHandle?`, `supersedesHandles?`, `project?` | Partially updates any specified fields on an existing architectural decision in a single round-trip. |
+| `watr_obsolete_decision` | `idOrHandle*`, `supersededByHandle?`, `project?` | Marks an existing decision as `Obsolete` (`Status = "Obsolete"`) and optionally sets `supersededByHandle` to the newer decision that replaced it. |
+| `watr_update_task` | `idOrHandle*`, `title?`, `body?`, `status?`, `priority?`, `handle?`, `taskType?`, `tags?`, `supersededByHandle?`, `supersedesHandles?`, `project?` | Partially updates any specified fields on an existing task in a single round-trip. |
 | `watr_claim_task` | `idOrHandle*`, `project?` | Assigns the task to the current user and sets status to `InProgress`. |
 | `watr_release_task` | `idOrHandle*`, `project?` | Unassigns the task and reverts status to `Open`. |
 | `watr_complete_task` | `idOrHandle*`, `verificationNote?`, `project?` | Appends `verificationNote` (if provided) and marks the task `Completed`. |
-| `watr_add_note` | `idOrHandle*`, `content*`, `project?` | Appends a Markdown note to the task's activity log. |
+| `watr_add_note` | `idOrHandle*`, `content*`, `project?` | Appends a Markdown note to a task's or decision's activity log. |
 
 ### Valid Enum Values
 - **`status`:** `Open`, `InProgress`, `Completed`, `Blocked`, `Cancelled`, `Obsolete`

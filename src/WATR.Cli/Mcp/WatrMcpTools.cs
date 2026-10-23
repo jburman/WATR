@@ -186,13 +186,13 @@ public class WatrMcpTools
     }
 
     [McpServerTool(Name = "watr_list_tasks", ReadOnly = true)]
-    [Description("List tasks or decision records within a project with optional filtering by status, priority, taskType, tag, and assignment.")]
+    [Description("List tasks within a project with optional filtering by status, priority, taskType, tag, and assignment. (Use watr_list_decisions to list architectural decisions.)")]
     public async Task<List<TaskItemSummaryDto>> ListTasksAsync(
         [Description("Project name (defaults to active project if omitted)")] string? project = null,
         [Description("Filter by status: Open, InProgress, Completed, Blocked, Cancelled, Obsolete")] string? status = null,
         [Description("Filter by priority: None, Low, Medium, High, Critical")] string? priority = null,
         [Description("Filter to tasks assigned to me ('me') or null for all")] string? assignedTo = null,
-        [Description("Filter by type (e.g. 'Task', 'Epic', 'Bug', 'Decision', or '!Decision' for all non-decision tasks)")] string? taskType = null,
+        [Description("Filter by task sub-type (e.g. 'Task', 'Epic', 'Bug'). Defaults to '!Decision' (all non-decision tasks) when omitted.")] string? taskType = null,
         [Description("Filter by tag or component (e.g. 'auth', 'OnnxEmbeddingService.cs')")] string? tag = null,
         [Description("Page number (default: 1)")] int page = 1,
         [Description("Page size (default: 50)")] int pageSize = 50,
@@ -213,10 +213,8 @@ public class WatrMcpTools
             {
                 path += $"&assignedTo={Uri.EscapeDataString(assignedTo)}";
             }
-            if (!string.IsNullOrWhiteSpace(taskType))
-            {
-                path += $"&taskType={Uri.EscapeDataString(taskType)}";
-            }
+            var effectiveTaskType = string.IsNullOrWhiteSpace(taskType) ? "!Decision" : taskType;
+            path += $"&taskType={Uri.EscapeDataString(effectiveTaskType)}";
             if (!string.IsNullOrWhiteSpace(tag))
             {
                 path += $"&tag={Uri.EscapeDataString(tag)}";
@@ -244,12 +242,12 @@ public class WatrMcpTools
     }
 
     [McpServerTool(Name = "watr_search_tasks", ReadOnly = true)]
-    [Description("Perform semantic vector search across project tasks, notes, and architectural decisions by natural language query/intent.")]
+    [Description("Perform semantic vector search across project tasks and notes by natural language query/intent. (Use watr_search_decisions to search architectural decisions.)")]
     public async Task<List<TaskSearchResultDto>> SearchTasksAsync(
         [Description("Natural language search query (e.g. 'implement auth tokens', 'fix database deadlock')")] string query,
         [Description("Project name (defaults to active project if omitted)")] string? project = null,
         [Description("Filter by status: Open, InProgress, Completed, Blocked, Cancelled, Obsolete")] string? status = null,
-        [Description("Filter by type (e.g. 'Task', 'Epic', 'Bug', 'Decision', or '!Decision' for all non-decision tasks)")] string? taskType = null,
+        [Description("Filter by task sub-type (e.g. 'Task', 'Epic', 'Bug'). Defaults to '!Decision' (all non-decision tasks) when omitted.")] string? taskType = null,
         [Description("Filter by tag or component (e.g. 'auth', 'OnnxEmbeddingService.cs')")] string? tag = null,
         [Description("Maximum number of results to return (default: 10)")] int top = 10,
         [Description("Minimum cosine similarity score threshold 0.0 to 1.0 (default: 0.25)")] float minScore = 0.25f,
@@ -270,10 +268,8 @@ public class WatrMcpTools
             {
                 path += $"&status={parsedStatus.Value}";
             }
-            if (!string.IsNullOrWhiteSpace(taskType))
-            {
-                path += $"&taskType={Uri.EscapeDataString(taskType)}";
-            }
+            var effectiveTaskType = string.IsNullOrWhiteSpace(taskType) ? "!Decision" : taskType;
+            path += $"&taskType={Uri.EscapeDataString(effectiveTaskType)}";
             if (!string.IsNullOrWhiteSpace(tag))
             {
                 path += $"&tag={Uri.EscapeDataString(tag)}";
@@ -288,6 +284,120 @@ public class WatrMcpTools
         catch (Exception ex)
         {
             throw new McpException($"Failed to search tasks: {ex.Message}", ex);
+        }
+    }
+
+    [McpServerTool(Name = "watr_list_decisions", ReadOnly = true)]
+    [Description("List architectural decision records within a project with optional filtering by status and tag.")]
+    public async Task<List<TaskItemSummaryDto>> ListDecisionsAsync(
+        [Description("Project name (defaults to active project if omitted)")] string? project = null,
+        [Description("Filter by status: Completed (active), Obsolete (superseded/retired), or null for all")] string? status = null,
+        [Description("Filter by tag or component (e.g. 'auth', 'OnnxEmbeddingService.cs')")] string? tag = null,
+        [Description("Page number (default: 1)")] int page = 1,
+        [Description("Page size (default: 50)")] int pageSize = 50,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var projectDto = await ResolveProjectDtoAsync(project, cancellationToken);
+            var path = $"api/v1/projects/{projectDto.Id}/tasks?page={page}&pageSize={pageSize}&taskType=Decision";
+
+            var parsedStatus = ParseStatus(status);
+            if (parsedStatus.HasValue)
+            {
+                path += $"&status={parsedStatus.Value}";
+            }
+
+            if (!string.IsNullOrWhiteSpace(tag))
+            {
+                path += $"&tag={Uri.EscapeDataString(tag)}";
+            }
+
+            var response = await _api.GetAsync<PaginatedResponse<TaskItemSummaryDto>>(path);
+            return response.Items;
+        }
+        catch (McpException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            throw new McpException($"Failed to list decisions: {ex.Message}", ex);
+        }
+    }
+
+    [McpServerTool(Name = "watr_search_decisions", ReadOnly = true)]
+    [Description("Perform semantic vector search across project architectural decisions and rationale by natural language query/intent.")]
+    public async Task<List<TaskSearchResultDto>> SearchDecisionsAsync(
+        [Description("Natural language search query (e.g. 'why did we choose SQLite over Postgres', 'auth token design')")] string query,
+        [Description("Project name (defaults to active project if omitted)")] string? project = null,
+        [Description("Filter by status: Completed (active), Obsolete (superseded/retired), or null for all")] string? status = null,
+        [Description("Filter by tag or component (e.g. 'auth', 'OnnxEmbeddingService.cs')")] string? tag = null,
+        [Description("Maximum number of results to return (default: 10)")] int top = 10,
+        [Description("Minimum cosine similarity score threshold 0.0 to 1.0 (default: 0.25)")] float minScore = 0.25f,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(query))
+        {
+            throw new McpException("Query cannot be empty.");
+        }
+
+        try
+        {
+            var projectDto = await ResolveProjectDtoAsync(project, cancellationToken);
+            var path = $"api/v1/projects/{projectDto.Id}/tasks/search?q={Uri.EscapeDataString(query)}&top={top}&minScore={minScore}&taskType=Decision";
+
+            var parsedStatus = ParseStatus(status);
+            if (parsedStatus.HasValue)
+            {
+                path += $"&status={parsedStatus.Value}";
+            }
+            if (!string.IsNullOrWhiteSpace(tag))
+            {
+                path += $"&tag={Uri.EscapeDataString(tag)}";
+            }
+
+            return await _api.GetAsync<List<TaskSearchResultDto>>(path);
+        }
+        catch (McpException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            throw new McpException($"Failed to search decisions: {ex.Message}", ex);
+        }
+    }
+
+    [McpServerTool(Name = "watr_get_decision", ReadOnly = true)]
+    [Description("Get full details of an architectural decision record by ID (GUID) or decision handle (e.g. '12-adr-sqlite-vectors').")]
+    public async Task<TaskItemDto> GetDecisionAsync(
+        [Description("Decision ID (GUID) or Decision Handle (e.g. '12-adr-sqlite-vectors')")] string idOrHandle,
+        [Description("Project name (optional, used if resolving by decision handle when not a GUID)")] string? project = null,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(idOrHandle))
+        {
+            throw new McpException("Decision ID or handle is required.");
+        }
+
+        try
+        {
+            if (Guid.TryParse(idOrHandle, out var id))
+            {
+                return await _api.GetAsync<TaskItemDto>($"api/v1/tasks/{id}");
+            }
+
+            var projectDto = await ResolveProjectDtoAsync(project, cancellationToken);
+            return await _api.GetAsync<TaskItemDto>($"api/v1/projects/{projectDto.Id}/tasks/handle/{Uri.EscapeDataString(idOrHandle)}");
+        }
+        catch (McpException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            throw new McpException($"Decision '{idOrHandle}' not found or request failed: {ex.Message}", ex);
         }
     }
 
@@ -324,13 +434,13 @@ public class WatrMcpTools
     }
 
     [McpServerTool(Name = "watr_create_task", ReadOnly = false, Destructive = false)]
-    [Description("Create a new task, epic, bug, or decision record in a project.")]
+    [Description("Create a new task, epic, or bug in a project. (Use watr_record_decision to create architectural decisions.)")]
     public async Task<TaskItemDto> CreateTaskAsync(
         [Description("Task title")] string title,
         [Description("Unique task handle (e.g. 'PROJ-1', 'AUTH-42')")] string handle,
         [Description("Detailed task description or body content")] string? body = null,
         [Description("Task priority: None, Low, Medium, High, Critical")] string? priority = null,
-        [Description("Optional task sub-type or 'Decision' (defaults to 'Task')")] string? taskType = null,
+        [Description("Optional task sub-type (e.g. 'Task', 'Epic', 'Bug'; defaults to 'Task')")] string? taskType = null,
         [Description("Optional initial status: Open, InProgress, Completed, Blocked, Cancelled, Obsolete")] string? status = null,
         [Description("Optional comma-separated tags or related file paths (e.g. 'auth,OnnxEmbeddingService.cs')")] string? tags = null,
         [Description("Optional handle of a newer task/decision that supersedes this item")] string? supersededByHandle = null,
@@ -453,8 +563,58 @@ public class WatrMcpTools
         }
     }
 
+    [McpServerTool(Name = "watr_update_decision", ReadOnly = false, Destructive = false)]
+    [Description("Update fields of an existing architectural decision record (title, body/rationale, status, handle, tags, or superseding links).")]
+    public async Task<TaskItemDto> UpdateDecisionAsync(
+        [Description("Decision ID (GUID) or decision handle")] string idOrHandle,
+        [Description("New decision title")] string? title = null,
+        [Description("New Markdown body / rationale (or '@file.md' to read from file)")] string? body = null,
+        [Description("New status: Completed (active) or Obsolete (superseded/retired)")] string? status = null,
+        [Description("New decision handle")] string? handle = null,
+        [Description("Optional comma-separated tags or related file paths")] string? tags = null,
+        [Description("Optional handle of a newer decision that supersedes this decision")] string? supersededByHandle = null,
+        [Description("Optional comma-separated handles or GUIDs of previous decisions that this decision supersedes (marks them Obsolete and sets their SupersededByHandle)")] string? supersedesHandles = null,
+        [Description("Project name (needed if idOrHandle is a handle)")] string? project = null,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(idOrHandle)) throw new McpException("Decision ID or handle is required.");
+
+        try
+        {
+            var taskId = await ResolveTaskIdAsync(idOrHandle, project, cancellationToken);
+
+            var resolvedBody = body;
+            if (resolvedBody != null && resolvedBody.StartsWith("@") && File.Exists(resolvedBody[1..]))
+            {
+                resolvedBody = await File.ReadAllTextAsync(resolvedBody[1..], cancellationToken);
+            }
+
+            var patchRequest = new PatchTaskRequest
+            {
+                Title = title,
+                Body = resolvedBody,
+                Status = ParseStatus(status),
+                TaskHandle = handle,
+                TaskType = "Decision",
+                Tags = ParseTags(tags),
+                SupersededByHandle = supersededByHandle,
+                SupersedesHandles = ParseTags(supersedesHandles)
+            };
+
+            return await _api.PatchAsync<TaskItemDto>($"api/v1/tasks/{taskId}", patchRequest);
+        }
+        catch (McpException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            throw new McpException($"Failed to update decision '{idOrHandle}': {ex.Message}", ex);
+        }
+    }
+
     [McpServerTool(Name = "watr_update_task", ReadOnly = false, Destructive = false)]
-    [Description("Update fields of an existing task or decision.")]
+    [Description("Update fields of an existing task. (Use watr_update_decision to update architectural decisions.)")]
     public async Task<TaskItemDto> UpdateTaskAsync(
         [Description("Task ID (GUID) or task handle")] string idOrHandle,
         [Description("New title")] string? title = null,
@@ -576,9 +736,9 @@ public class WatrMcpTools
     }
 
     [McpServerTool(Name = "watr_add_note", ReadOnly = false, Destructive = false)]
-    [Description("Add a progress note or comment to a task.")]
+    [Description("Add a progress note or comment to a task or decision.")]
     public async Task<TaskNoteDto> AddNoteAsync(
-        [Description("Task ID (GUID) or task handle")] string idOrHandle,
+        [Description("Task or decision ID (GUID) or handle")] string idOrHandle,
         [Description("Content of the note")] string content,
         [Description("Project name (needed if idOrHandle is a handle)")] string? project = null,
         CancellationToken cancellationToken = default)
