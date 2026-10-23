@@ -1,0 +1,92 @@
+@using WATR.Web.Services
+@using WATR.Shared.DTOs
+@using WATR.Shared.Enums
+@inject TaskService TaskService
+@inject DialogService DialogService
+@inject NotificationService NotificationService
+
+<RadzenStack Gap="1rem" Style="padding: 1rem;">
+    <RadzenFormField Text="Decision Title (Required)">
+        <RadzenTextBox @bind-Value="title" Immediate="true" Style="width: 100%;" Placeholder="e.g. Choose SQLite over PostgreSQL for local embeddings" />
+    </RadzenFormField>
+    <RadzenFormField Text="Handle (Required)">
+        <RadzenTextBox @bind-Value="handle" Immediate="true" Style="width: 100%;" Placeholder="e.g. adr-sqlite-vectors" />
+    </RadzenFormField>
+    <RadzenFormField Text="Decision Rationale & Context (Markdown)">
+        <RadzenTextArea @bind-Value="body" Rows="6" Style="width: 100%; font-family: monospace;" Placeholder="Explain why this decision was made, options considered, and trade-offs..." />
+    </RadzenFormField>
+    <RadzenFormField Text="Tags (comma-separated)">
+        <RadzenTextBox @bind-Value="tagsString" Style="width: 100%;" Placeholder="e.g. architecture, sqlite, search" />
+    </RadzenFormField>
+    <RadzenFormField Text="Supersedes Previous Decisions (marks selected as Obsolete)">
+        <RadzenDropDown TValue="IEnumerable<string>" @bind-Value="selectedSupersedes" Data="@candidateDecisions"
+                        TextProperty="Display" ValueProperty="Handle" Multiple="true" Chips="true" AllowClear="true"
+                        Style="width: 100%;" Placeholder="Select previous decisions superseded by this one..." />
+    </RadzenFormField>
+    <RadzenStack Orientation="Orientation.Horizontal" JustifyContent="JustifyContent.End" Gap="1rem" Style="margin-top: 1rem;">
+        <RadzenButton Text="Cancel" Click="@(() => DialogService.Close(false))" ButtonStyle="ButtonStyle.Light" />
+        <RadzenButton Text="Record Decision" Click="@Save" ButtonStyle="ButtonStyle.Primary" Disabled="@(!CanSubmit)" />
+    </RadzenStack>
+</RadzenStack>
+
+@code {
+    [Parameter]
+    public Guid ProjectId { get; set; }
+
+    [Parameter]
+    public Guid UserId { get; set; }
+
+    [Parameter]
+    public List<TaskItemSummaryDto> ExistingDecisions { get; set; } = new();
+
+    private string title = string.Empty;
+    private string handle = string.Empty;
+    private string body = string.Empty;
+    private string tagsString = string.Empty;
+    private IEnumerable<string> selectedSupersedes = Enumerable.Empty<string>();
+
+    private record DecisionOption(string Handle, string Display);
+    private List<DecisionOption> candidateDecisions = new();
+
+    private bool CanSubmit => !string.IsNullOrWhiteSpace(title) && !string.IsNullOrWhiteSpace(handle);
+
+    protected override void OnInitialized()
+    {
+        candidateDecisions = ExistingDecisions
+            .Where(d => !string.IsNullOrWhiteSpace(d.TaskHandle))
+            .Select(d => new DecisionOption(d.TaskHandle!, $"{d.TaskHandle} — {d.Title}"))
+            .ToList();
+    }
+
+    private async Task Save()
+    {
+        if (!CanSubmit) return;
+
+        try
+        {
+            var parsedTags = !string.IsNullOrWhiteSpace(tagsString)
+                ? tagsString.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToList()
+                : new List<string>();
+
+            var newDecision = new CreateTaskRequest
+            {
+                Title = title.Trim(),
+                TaskHandle = handle.Trim(),
+                Body = body,
+                TaskType = "Decision",
+                Status = TaskItemStatus.Completed,
+                Priority = TaskPriority.Medium,
+                Tags = parsedTags,
+                SupersedesHandles = selectedSupersedes?.ToList() ?? new List<string>()
+            };
+
+            await TaskService.CreateTaskAsync(ProjectId, newDecision, UserId);
+            NotificationService.Notify(NotificationSeverity.Success, "Success", "Decision recorded");
+            DialogService.Close(true);
+        }
+        catch (Exception ex)
+        {
+            NotificationService.Notify(NotificationSeverity.Error, "Error", ex.Message);
+        }
+    }
+}

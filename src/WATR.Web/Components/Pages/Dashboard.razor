@@ -26,7 +26,7 @@
                         <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" JustifyContent="JustifyContent.SpaceBetween" Gap="1rem" Wrap="FlexWrap.Wrap">
                             <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="1rem" Wrap="FlexWrap.Wrap">
                                 <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="0.5rem">
-                                    <RadzenTextBox @bind-Value="searchQuery" Placeholder="Search tasks..." Style="width: 280px;" @onkeydown="@OnSearchKeyDown" />
+                                    <RadzenTextBox @bind-Value="searchQuery" Immediate="true" Placeholder="Search tasks..." Style="width: 280px;" @onkeydown="@OnSearchKeyDown" />
                                     <RadzenButton Icon="search" ButtonStyle="ButtonStyle.Primary" Click="@OnSearch" Size="ButtonSize.Small" />
                                     @if (!string.IsNullOrWhiteSpace(searchQuery))
                                     {
@@ -107,7 +107,7 @@
                         <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" JustifyContent="JustifyContent.SpaceBetween" Gap="1rem" Wrap="FlexWrap.Wrap">
                             <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="1rem" Wrap="FlexWrap.Wrap">
                                 <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="0.5rem">
-                                    <RadzenTextBox @bind-Value="decisionSearchQuery" Placeholder="Search decisions by rationale..." Style="width: 280px;" @onkeydown="@OnDecisionSearchKeyDown" />
+                                    <RadzenTextBox @bind-Value="decisionSearchQuery" Immediate="true" Placeholder="Search decisions by rationale..." Style="width: 280px;" @onkeydown="@OnDecisionSearchKeyDown" />
                                     <RadzenButton Icon="search" ButtonStyle="ButtonStyle.Primary" Click="@OnDecisionSearch" Size="ButtonSize.Small" />
                                     @if (!string.IsNullOrWhiteSpace(decisionSearchQuery))
                                     {
@@ -369,7 +369,7 @@
 
     private async Task OnSearchKeyDown(KeyboardEventArgs e)
     {
-        if (e.Key == "Enter")
+        if (e.Key is "Enter" or "NumpadEnter" || e.Code is "Enter" or "NumpadEnter")
         {
             await OnSearch();
         }
@@ -388,7 +388,7 @@
 
     private async Task OnDecisionSearchKeyDown(KeyboardEventArgs e)
     {
-        if (e.Key == "Enter")
+        if (e.Key is "Enter" or "NumpadEnter" || e.Code is "Enter" or "NumpadEnter")
         {
             await OnDecisionSearch();
         }
@@ -445,99 +445,41 @@
 
     private async Task OnNewTask()
     {
-        var subTypes = ProjectContext.SelectedProject?.GetTaskSubTypes() ?? new List<string> { "Task" };
-        var newTask = new CreateTaskRequest { Title = "New Task", TaskType = "Task" };
-        var tagsString = string.Empty;
-        var result = await DialogService.OpenAsync("Create New Task", ds =>
-            @<RadzenStack Gap="1rem">
-                <RadzenFormField Text="Title">
-                    <RadzenTextBox @bind-Value="newTask.Title" />
-                </RadzenFormField>
-                <RadzenFormField Text="Handle (Required)">
-                    <RadzenTextBox @bind-Value="newTask.TaskHandle" Placeholder="e.g. login-page" />
-                </RadzenFormField>
-                <RadzenFormField Text="Task Sub-Type">
-                    <RadzenDropDown TValue="string" Data="@subTypes" @bind-Value="newTask.TaskType" />
-                </RadzenFormField>
-                <RadzenFormField Text="Priority">
-                    <RadzenDropDown TValue="TaskPriority" Data="@(Enum.GetValues<TaskPriority>())" @bind-Value="newTask.Priority" />
-                </RadzenFormField>
-                <RadzenFormField Text="Tags (comma-separated)">
-                    <RadzenTextBox @bind-Value="tagsString" Placeholder="e.g. auth, ui" />
-                </RadzenFormField>
-                <RadzenStack Orientation="Orientation.Horizontal" JustifyContent="JustifyContent.End" Gap="1rem">
-                    <RadzenButton Text="Cancel" Click="@(() => ds.Close(false))" ButtonStyle="ButtonStyle.Light" />
-                    <RadzenButton Text="Create" Click="@(() => { if(!string.IsNullOrWhiteSpace(newTask.TaskHandle)) ds.Close(true); })" ButtonStyle="ButtonStyle.Primary" Disabled="@string.IsNullOrWhiteSpace(newTask.TaskHandle)" />
-                </RadzenStack>
-            </RadzenStack>
-        );
+        if (ProjectContext.SelectedProject == null) return;
 
-        var selectedProject = ProjectContext.SelectedProject;
-        if (result == true && selectedProject is not null)
-        {
-            if (!string.IsNullOrWhiteSpace(tagsString))
+        var subTypes = ProjectContext.SelectedProject.GetTaskSubTypes();
+        var result = await DialogService.OpenAsync<NewTaskDialog>(
+            "Create New Task",
+            new Dictionary<string, object>
             {
-                newTask.Tags = tagsString.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToList();
-            }
-            await TaskService.CreateTaskAsync(selectedProject!.Id, newTask, currentUserId);
+                { "ProjectId", ProjectContext.SelectedProject.Id },
+                { "UserId", currentUserId },
+                { "SubTypes", subTypes }
+            },
+            new DialogOptions { Width = "650px", Resizable = true });
+
+        if (result == true)
+        {
             await LoadAllData();
         }
     }
 
     private async Task OnNewDecision()
     {
-        var newDecision = new CreateTaskRequest
-        {
-            Title = "New Architectural Decision",
-            TaskType = "Decision",
-            Status = TaskItemStatus.Completed,
-            Priority = TaskPriority.Medium
-        };
-        var tagsString = string.Empty;
-        IEnumerable<string> selectedSupersedes = Enumerable.Empty<string>();
-        var candidateDecisions = allProjectDecisions
-            .Where(d => !string.IsNullOrWhiteSpace(d.TaskHandle))
-            .Select(d => new { Handle = d.TaskHandle!, Display = $"{d.TaskHandle} — {d.Title}" })
-            .ToList();
+        if (ProjectContext.SelectedProject == null) return;
 
-        var result = await DialogService.OpenAsync("Record New Decision", ds =>
-            @<RadzenStack Gap="1rem">
-                <RadzenFormField Text="Decision Title">
-                    <RadzenTextBox @bind-Value="newDecision.Title" />
-                </RadzenFormField>
-                <RadzenFormField Text="Handle (Required)">
-                    <RadzenTextBox @bind-Value="newDecision.TaskHandle" Placeholder="e.g. adr-sqlite-vectors" />
-                </RadzenFormField>
-                <RadzenFormField Text="Decision Rationale & Context (Markdown)">
-                    <RadzenTextArea @bind-Value="newDecision.Body" Rows="6" Style="width: 100%; font-family: monospace;" Placeholder="Explain why this decision was made, options considered, and trade-offs..." />
-                </RadzenFormField>
-                <RadzenFormField Text="Tags (comma-separated)">
-                    <RadzenTextBox @bind-Value="tagsString" Placeholder="e.g. architecture, sqlite, search" />
-                </RadzenFormField>
-                <RadzenFormField Text="Supersedes Previous Decisions (marks selected as Obsolete)">
-                    <RadzenDropDown TValue="IEnumerable<string>" @bind-Value="selectedSupersedes" Data="@candidateDecisions"
-                                    TextProperty="Display" ValueProperty="Handle" Multiple="true" Chips="true" AllowClear="true"
-                                    Placeholder="Select previous decisions superseded by this one..." />
-                </RadzenFormField>
-                <RadzenStack Orientation="Orientation.Horizontal" JustifyContent="JustifyContent.End" Gap="1rem">
-                    <RadzenButton Text="Cancel" Click="@(() => ds.Close(false))" ButtonStyle="ButtonStyle.Light" />
-                    <RadzenButton Text="Record Decision" Click="@(() => { if(!string.IsNullOrWhiteSpace(newDecision.TaskHandle)) ds.Close(true); })" ButtonStyle="ButtonStyle.Primary" Disabled="@string.IsNullOrWhiteSpace(newDecision.TaskHandle)" />
-                </RadzenStack>
-            </RadzenStack>
-        );
+        var result = await DialogService.OpenAsync<NewDecisionDialog>(
+            "Record New Decision",
+            new Dictionary<string, object>
+            {
+                { "ProjectId", ProjectContext.SelectedProject.Id },
+                { "UserId", currentUserId },
+                { "ExistingDecisions", allProjectDecisions }
+            },
+            new DialogOptions { Width = "700px", Resizable = true });
 
-        var selectedProject = ProjectContext.SelectedProject;
-        if (result == true && selectedProject is not null)
+        if (result == true)
         {
-            if (!string.IsNullOrWhiteSpace(tagsString))
-            {
-                newDecision.Tags = tagsString.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToList();
-            }
-            if (selectedSupersedes != null && selectedSupersedes.Any())
-            {
-                newDecision.SupersedesHandles = selectedSupersedes.ToList();
-            }
-            await TaskService.CreateTaskAsync(selectedProject!.Id, newDecision, currentUserId);
             await LoadAllData();
         }
     }

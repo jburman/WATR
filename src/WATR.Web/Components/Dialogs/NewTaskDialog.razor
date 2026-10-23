@@ -1,0 +1,89 @@
+@using WATR.Web.Services
+@using WATR.Shared.DTOs
+@using WATR.Shared.Enums
+@inject TaskService TaskService
+@inject DialogService DialogService
+@inject NotificationService NotificationService
+
+<RadzenStack Gap="1rem" Style="padding: 1rem;">
+    <RadzenFormField Text="Title (Required)">
+        <RadzenTextBox @bind-Value="title" Immediate="true" Style="width: 100%;" Placeholder="e.g. Implement user profile page" />
+    </RadzenFormField>
+    <RadzenFormField Text="Handle (Required)">
+        <RadzenTextBox @bind-Value="handle" Immediate="true" Style="width: 100%;" Placeholder="e.g. user-profile" />
+    </RadzenFormField>
+    <RadzenFormField Text="Task Sub-Type">
+        <RadzenDropDown TValue="string" Data="@SubTypes" @bind-Value="taskType" Style="width: 100%;" />
+    </RadzenFormField>
+    <RadzenFormField Text="Priority">
+        <RadzenDropDown TValue="TaskPriority" Data="@(Enum.GetValues<TaskPriority>())" @bind-Value="priority" Style="width: 100%;" />
+    </RadzenFormField>
+    <RadzenFormField Text="Description / Plan (Markdown)">
+        <RadzenTextArea @bind-Value="body" Rows="5" Style="width: 100%; font-family: monospace;" Placeholder="Acceptance criteria, plan, or notes..." />
+    </RadzenFormField>
+    <RadzenFormField Text="Tags (comma-separated)">
+        <RadzenTextBox @bind-Value="tagsString" Style="width: 100%;" Placeholder="e.g. auth, ui" />
+    </RadzenFormField>
+    <RadzenStack Orientation="Orientation.Horizontal" JustifyContent="JustifyContent.End" Gap="1rem" Style="margin-top: 1rem;">
+        <RadzenButton Text="Cancel" Click="@(() => DialogService.Close(false))" ButtonStyle="ButtonStyle.Light" />
+        <RadzenButton Text="Create Task" Click="@Save" ButtonStyle="ButtonStyle.Primary" Disabled="@(!CanSubmit)" />
+    </RadzenStack>
+</RadzenStack>
+
+@code {
+    [Parameter]
+    public Guid ProjectId { get; set; }
+
+    [Parameter]
+    public Guid UserId { get; set; }
+
+    [Parameter]
+    public List<string> SubTypes { get; set; } = new() { "Task" };
+
+    private string title = string.Empty;
+    private string handle = string.Empty;
+    private string taskType = "Task";
+    private TaskPriority priority = TaskPriority.None;
+    private string body = string.Empty;
+    private string tagsString = string.Empty;
+
+    private bool CanSubmit => !string.IsNullOrWhiteSpace(title) && !string.IsNullOrWhiteSpace(handle);
+
+    protected override void OnInitialized()
+    {
+        if (SubTypes.Count > 0 && !SubTypes.Contains(taskType, StringComparer.OrdinalIgnoreCase))
+        {
+            taskType = SubTypes[0];
+        }
+    }
+
+    private async Task Save()
+    {
+        if (!CanSubmit) return;
+
+        try
+        {
+            var parsedTags = !string.IsNullOrWhiteSpace(tagsString)
+                ? tagsString.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToList()
+                : new List<string>();
+
+            var newTask = new CreateTaskRequest
+            {
+                Title = title.Trim(),
+                TaskHandle = handle.Trim(),
+                Body = body,
+                TaskType = taskType,
+                Priority = priority,
+                Tags = parsedTags
+            };
+
+            await TaskService.CreateTaskAsync(ProjectId, newTask, UserId);
+            NotificationService.Notify(NotificationSeverity.Success, "Success", "Task created");
+            DialogService.Close(true);
+        }
+        catch (Exception ex)
+        {
+            NotificationService.Notify(NotificationSeverity.Error, "Error", ex.Message);
+        }
+    }
+}
