@@ -29,6 +29,9 @@ jobs:
       - name: dotnet publish
         run: dotnet publish src/WATR.Web/WATR.Web.csproj -c Release -o ./publish/web --no-build
 
+      - name: Ensure App_Data is excluded from publish artifact
+        run: rm -rf ./publish/web/App_Data
+
       - name: Upload artifact for deployment job
         uses: actions/upload-artifact@v4
         with:

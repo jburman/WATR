@@ -57,7 +57,8 @@ public class OnnxEmbeddingService : IOnnxEmbeddingService
         {
             if (_initialized) return;
 
-            var modelDir = Path.Combine(_env.ContentRootPath, "App_Data", "models", "all-MiniLM-L6-v2");
+            var dataRoot = ResolvePersistentDataRoot(_env.ContentRootPath);
+            var modelDir = Path.Combine(dataRoot, "models", "all-MiniLM-L6-v2");
             Directory.CreateDirectory(modelDir);
 
             var modelPath = Path.Combine(modelDir, "model.onnx");
@@ -289,6 +290,21 @@ public class OnnxEmbeddingService : IOnnxEmbeddingService
     {
         ArgumentNullException.ThrowIfNull(serviceType);
         return serviceKey is null && serviceType.IsInstanceOfType(this) ? this : null;
+    }
+
+    private static string ResolvePersistentDataRoot(string contentRootPath)
+    {
+        var isAzureAppService =
+            !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("WEBSITE_SITE_NAME")) ||
+            !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("WEBSITE_INSTANCE_ID"));
+        var homeDir = Environment.GetEnvironmentVariable("HOME");
+
+        if (isAzureAppService && !string.IsNullOrEmpty(homeDir))
+        {
+            return Path.Combine(homeDir, "data");
+        }
+
+        return Path.Combine(contentRootPath, "App_Data");
     }
 
     public void Dispose()

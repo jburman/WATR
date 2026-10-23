@@ -32,10 +32,13 @@ builder.Services.AddScoped(sp =>
     return new HttpClient { BaseAddress = new Uri(navManager.BaseUri) };
 });
 
+var resolvedConnString = ResolveSqliteConnectionString(
+    builder.Configuration.GetConnectionString("DefaultConnection") ?? "Data Source=App_Data/watr.db",
+    builder.Environment.ContentRootPath);
+
 builder.Services.AddDbContextFactory<WatrDbContext>(options =>
 {
-    var connString = builder.Configuration.GetConnectionString("DefaultConnection");
-    options.UseSqlite(connString);
+    options.UseSqlite(resolvedConnString);
 });
 
 builder.Services.AddScoped(sp => sp.GetRequiredService<IDbContextFactory<WatrDbContext>>().CreateDbContext());
@@ -141,16 +144,14 @@ using (var scope = app.Services.CreateScope())
     var services = scope.ServiceProvider;
     var logger = services.GetRequiredService<ILogger<Program>>();
     var db = services.GetRequiredService<WatrDbContext>();
-    var config = services.GetRequiredService<IConfiguration>();
     
-    var connString = config.GetConnectionString("DefaultConnection") ?? "Unknown";
     // Be careful with secrets in prod logs, but SQLite connection string is usually just a file path.
-    logger.LogInformation("Using connection string: {ConnString}", connString);
+    logger.LogInformation("Using connection string: {ConnString}", resolvedConnString);
 
     // Ensure directory exists if it's a file path
     try 
     {
-        var csBuilder = new Microsoft.Data.Sqlite.SqliteConnectionStringBuilder(connString);
+        var csBuilder = new Microsoft.Data.Sqlite.SqliteConnectionStringBuilder(resolvedConnString);
         var dataSource = csBuilder.DataSource;
         if (!string.IsNullOrEmpty(dataSource) && dataSource != ":memory:")
         {
@@ -227,5 +228,41 @@ app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();
 
 app.Run();
+
+static string ResolveSqliteConnectionString(string connectionString, string contentRootPath)
+{
+    var csBuilder = new Microsoft.Data.Sqlite.SqliteConnectionStringBuilder(connectionString);
+    var dataSource = csBuilder.DataSource;
+    if (string.IsNullOrWhiteSpace(dataSource) || dataSource == ":memory:" || Path.IsPathRooted(dataSource))
+    {
+        return connectionString;
+    }
+
+    var isAzureAppService =
+        !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("WEBSITE_SITE_NAME")) ||
+        !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("WEBSITE_INSTANCE_ID"));
+    var homeDir = Environment.GetEnvironmentVariable("HOME");
+
+    if (isAzureAppService && !string.IsNullOrEmpty(homeDir))
+    {
+        // Store SQLite DB in $HOME/data (outside /home/site/wwwroot) so ZipDeploy / OneDeploy never wipes it.
+        var persistentDataDir = Path.Combine(homeDir, "data");
+        Directory.CreateDirectory(persistentDataDir);
+
+        var dbFileName = Path.GetFileName(dataSource);
+        var persistentDbPath = Path.Combine(persistentDataDir, dbFileName);
+        var legacyWwwrootDbPath = Path.Combine(contentRootPath, dataSource);
+
+        if (!File.Exists(persistentDbPath) && File.Exists(legacyWwwrootDbPath))
+        {
+            File.Copy(legacyWwwrootDbPath, persistentDbPath, overwrite: false);
+        }
+
+        csBuilder.DataSource = persistentDbPath;
+        return csBuilder.ToString();
+    }
+
+    return connectionString;
+}
 
 public partial class Program { }
